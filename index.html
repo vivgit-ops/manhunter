@@ -4,17 +4,17 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Manhunt Live</title>
-  
-  <!-- Leaflet CSS for the map -->
+
+  <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  
+
   <style>
     /* --- BLUE AESTHETIC THEME --- */
     :root {
-      --bg: #070d19;
-      --surface: #111c33;
-      --surface-light: #1b2b4b;
-      --border: #283c66;
+      --bg: #060b16;
+      --surface: #0f1a2e;
+      --surface-light: #182947;
+      --border: #253d68;
       --primary: #38bdf8;
       --primary-dark: #0284c7;
       --accent: #60a5fa;
@@ -32,33 +32,33 @@
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       background-color: var(--bg);
       color: var(--text);
+      height: 100dvh;
+      width: 100vw;
+      overflow: hidden;
       display: flex;
       flex-direction: column;
-      height: 100dvh;
-      overflow: hidden;
     }
 
     .screen {
       display: none;
       flex-direction: column;
-      padding: 14px;
-      height: 100%;
-      overflow-y: auto;
-    }
-    .active { display: flex; }
-
-    h1, h2, h3 { margin: 0 0 10px 0; text-align: center; color: var(--primary); }
-    label { font-size: 13px; color: var(--text-muted); display: block; margin-top: 8px; }
-
-    input, button, select {
-      padding: 12px;
-      margin: 6px 0;
-      border-radius: 10px;
-      border: 1px solid var(--border);
-      font-size: 15px;
+      height: 100dvh;
       width: 100%;
+      overflow-y: auto;
+      padding: 12px;
     }
-    input, select {
+    .screen.active { display: flex; }
+
+    h1, h2, h3 { margin: 0 0 8px 0; text-align: center; color: var(--primary); }
+    label { font-size: 12px; font-weight: 600; color: var(--text-muted); display: block; margin-top: 8px; }
+
+    input, select, button {
+      width: 100%;
+      padding: 10px 12px;
+      margin-top: 4px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      font-size: 14px;
       background-color: var(--bg);
       color: var(--text);
     }
@@ -68,10 +68,11 @@
 
     button {
       background: linear-gradient(135deg, var(--primary), var(--primary-dark));
-      color: #041020;
+      color: #030914;
       font-weight: 700;
       border: none;
       cursor: pointer;
+      margin-top: 8px;
       transition: transform 0.1s, opacity 0.2s;
     }
     button:active { transform: scale(0.98); opacity: 0.9; }
@@ -82,290 +83,325 @@
     }
     button.danger {
       background: var(--danger);
-      color: white;
+      color: #fff;
     }
 
     .card {
       background-color: var(--surface);
       border: 1px solid var(--border);
-      padding: 14px;
       border-radius: 12px;
-      margin-bottom: 12px;
+      padding: 12px;
+      margin-bottom: 10px;
     }
 
-    .safety-notice {
-      background-color: rgba(251, 191, 36, 0.12);
-      border: 1px solid var(--warning);
-      color: var(--warning);
-      padding: 10px;
-      border-radius: 10px;
-      font-size: 13px;
-      text-align: center;
-      margin-bottom: 12px;
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
     }
 
-    .player-list-item {
+    .player-row {
       display: flex;
       justify-content: space-between;
       align-items: center;
       padding: 8px 0;
       border-bottom: 1px solid var(--border);
+      font-size: 14px;
     }
 
-    /* --- GAME SCREEN & SPLIT UI --- */
-    #screen-game { padding: 10px; overflow: hidden; }
+    #setupMap {
+      width: 100%;
+      height: 170px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      margin-top: 6px;
+    }
 
-    .hud {
+    /* --- STRICT 50/50 SPLIT GAME SCREEN --- */
+    #screen-game {
+      padding: 0;
+      overflow: hidden;
+    }
+
+    /* TOP HALF: 50% MAP */
+    .map-half {
+      height: 50dvh;
+      width: 100%;
+      position: relative;
+      border-bottom: 2px solid var(--primary);
+    }
+    #map {
+      width: 100%;
+      height: 100%;
+    }
+    .recenter-btn {
+      position: absolute;
+      bottom: 10px;
+      right: 10px;
+      z-index: 1000;
+      width: auto;
+      padding: 6px 10px;
+      font-size: 12px;
+      background: var(--surface);
+      color: var(--primary);
+      border: 1px solid var(--primary);
+      border-radius: 6px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+    }
+
+    /* BOTTOM HALF: 50% FEATURES & CONTROLS */
+    .features-half {
+      height: 50dvh;
+      width: 100%;
+      padding: 8px 10px;
       display: flex;
-      justify-content: space-between;
-      align-items: center;
+      flex-direction: column;
+      gap: 6px;
+      overflow-y: auto;
+      background: var(--bg);
+    }
+
+    .hud-bar {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
       background: var(--surface);
       border: 1px solid var(--border);
-      padding: 8px 12px;
-      border-radius: 10px;
-      font-size: 13px;
-      font-weight: 600;
-      margin-bottom: 6px;
+      padding: 6px 8px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 700;
+      text-align: center;
     }
 
     .alert-banner {
       display: none;
-      padding: 8px;
-      border-radius: 8px;
+      padding: 6px 8px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 700;
       text-align: center;
-      font-weight: bold;
-      font-size: 13px;
-      margin-bottom: 6px;
     }
-    .alert-danger { background: var(--danger); color: white; }
     .alert-warning { background: var(--warning); color: #000; }
+    .alert-danger { background: var(--danger); color: #fff; }
 
-    .view-controls {
+    .feature-buttons {
       display: flex;
       gap: 6px;
-      margin-bottom: 6px;
     }
-    .view-controls button {
-      padding: 6px;
+    .feature-buttons button {
       margin: 0;
-      font-size: 12px;
-      background: var(--surface-light);
-      color: var(--text);
-      border: 1px solid var(--border);
-    }
-    .view-controls button.active-view {
-      background: var(--primary);
-      color: #000;
-    }
-
-    /* Map height modes */
-    #map {
-      width: 100%;
-      border-radius: 12px;
-      border: 1px solid var(--border);
-      z-index: 1;
-      transition: height 0.25s ease;
-    }
-    .map-split { height: 48%; }
-    .map-full { height: 82%; }
-    .map-mini { height: 22%; }
-
-    /* Bottom Drawer for Controls & Chat */
-    #gameDrawer {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      overflow-y: auto;
-      margin-top: 8px;
-      gap: 8px;
-    }
-
-    .action-row {
-      display: flex;
-      gap: 8px;
-    }
-    .action-row button { margin: 0; padding: 10px; font-size: 14px; }
-
-    /* Chat Box */
-    .chat-box {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 10px;
       padding: 8px;
-      display: flex;
-      flex-direction: column;
-      flex: 1;
-      min-height: 140px;
-    }
-    #chatMessages {
-      flex: 1;
-      overflow-y: auto;
       font-size: 13px;
-      margin-bottom: 6px;
-      max-height: 110px;
     }
-    .chat-msg { margin-bottom: 4px; line-height: 1.3; }
-    .chat-msg b { color: var(--primary); }
 
     .quick-pings {
       display: flex;
-      gap: 4px;
+      gap: 5px;
       overflow-x: auto;
-      padding-bottom: 4px;
+      padding-bottom: 2px;
     }
     .quick-pings button {
       width: auto;
       white-space: nowrap;
-      padding: 5px 8px;
       margin: 0;
+      padding: 5px 8px;
       font-size: 11px;
       background: var(--surface-light);
       color: var(--accent);
       border: 1px solid var(--border);
     }
 
-    .chat-input-row {
+    .chat-container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 6px;
+      min-height: 90px;
+    }
+    #chatMessages {
+      flex: 1;
+      overflow-y: auto;
+      font-size: 12px;
+      margin-bottom: 4px;
+    }
+    .chat-line { margin-bottom: 3px; }
+    .chat-line b { color: var(--primary); }
+
+    .chat-input-bar {
       display: flex;
       gap: 6px;
-      margin-top: 4px;
     }
-    .chat-input-row input { margin: 0; padding: 8px; font-size: 13px; }
-    .chat-input-row button { width: 70px; margin: 0; padding: 8px; font-size: 13px; }
+    .chat-input-bar input { margin: 0; padding: 6px 8px; font-size: 12px; }
+    .chat-input-bar button { margin: 0; width: 65px; padding: 6px; font-size: 12px; }
   </style>
 </head>
 <body>
 
-  <!-- 1. HOME SCREEN -->
+  <!-- ==========================================
+       1. HOME SCREEN (ALL FEATURES UPFRONT)
+       ========================================== -->
   <div id="screen-home" class="screen active">
     <h1>⚡ Manhunt Live</h1>
+
+    <!-- Player & Room Info -->
     <div class="card">
-      <label>Player Name</label>
-      <input type="text" id="playerName" placeholder="Enter your name" />
-      <label>Room Code</label>
-      <input type="text" id="roomCode" placeholder="e.g. 1234" />
-      
-      <button onclick="createRoom()">Create New Room</button>
-      <button class="secondary" onclick="joinRoom()">Join / Rejoin Room</button>
+      <div class="grid-2">
+        <div>
+          <label>Your Name</label>
+          <input type="text" id="playerName" placeholder="e.g. Vivek" />
+        </div>
+        <div>
+          <label>Room Code</label>
+          <input type="text" id="roomCode" placeholder="e.g. 1234" />
+        </div>
+      </div>
+
+      <label>Your Starting Role</label>
+      <select id="initialRole">
+        <option value="Hider">🏃 Hider (Run & Hide)</option>
+        <option value="Catcher">🕵️ Catcher (Hunt & Radar)</option>
+      </select>
     </div>
-    <div id="homeError" style="color: var(--danger); text-align: center; font-weight: bold;"></div>
+
+    <!-- All Game Features Setup directly on Home Screen -->
+    <div class="card">
+      <h3>⚙️ Game Features & Setup (Host)</h3>
+      <div class="grid-2">
+        <div>
+          <label>Game Timer (Mins)</label>
+          <input type="number" id="gameDuration" value="30" min="5" max="180" />
+        </div>
+        <div>
+          <label>GPS Update Speed</label>
+          <select id="pingIntervalSelect">
+            <option value="0">🔴 Live (Always On)</option>
+            <option value="60000">⏱️ Every 1 Min</option>
+            <option value="300000" selected>⏱️ Every 5 Mins</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div>
+          <label>Head-Start (Blind Catchers)</label>
+          <select id="headStartSelect">
+            <option value="0">Off (0 Mins)</option>
+            <option value="60000">1 Minute</option>
+            <option value="180000" selected>3 Minutes</option>
+            <option value="300000">5 Minutes</option>
+          </select>
+        </div>
+        <div>
+          <label>Play-Area Boundary</label>
+          <select id="boundarySelect" onchange="updateSetupCircle()">
+            <option value="0">No Boundary</option>
+            <option value="100">100m Circle</option>
+            <option value="250" selected>250m Circle</option>
+            <option value="500">500m Circle</option>
+            <option value="1000">1km Circle</option>
+          </select>
+        </div>
+      </div>
+
+      <label>Tap Map to Set Play-Area Boundary Center (Defaults to your GPS):</label>
+      <div id="setupMap"></div>
+
+      <button onclick="createRoom()">🚀 Create Room with These Settings</button>
+      <button class="secondary" onclick="joinRoom()">🔗 Join / Rejoin Existing Room</button>
+      <div id="homeError" style="color: var(--danger); text-align: center; font-size: 13px; font-weight: bold; margin-top: 6px;"></div>
+    </div>
   </div>
 
-  <!-- 2. LOBBY SCREEN -->
+  <!-- ==========================================
+       2. LOBBY SCREEN
+       ========================================== -->
   <div id="screen-lobby" class="screen">
-    <h2>Lobby: <span id="displayRoomCode"></span></h2>
-    <div class="safety-notice">
-      ⚠️ Stay in safe areas, avoid roads and private property, and don't play at night alone. Keep your screen on during the game!
-    </div>
-    
-    <!-- Host Settings -->
-    <div class="card" id="hostControls" style="display: none;">
-      <h3>Host Settings</h3>
-      
-      <label>Game Length (minutes):</label>
-      <input type="number" id="gameDuration" value="30" min="5" max="180" />
-
-      <label>Location Update Speed:</label>
-      <select id="pingIntervalSelect">
-        <option value="0">🔴 Live (Continuous GPS)</option>
-        <option value="60000">⏱️ Every 1 Minute</option>
-        <option value="180000">⏱️ Every 3 Minutes</option>
-        <option value="300000" selected>⏱️ Every 5 Minutes</option>
-      </select>
-
-      <label>Hider Head-Start (Blind Catchers):</label>
-      <select id="headStartSelect">
-        <option value="0">No Head-Start</option>
-        <option value="60000">1 Minute</option>
-        <option value="180000" selected>3 Minutes</option>
-        <option value="300000">5 Minutes</option>
-      </select>
-
-      <label>Play-Area Boundary (Centered on Host):</label>
-      <select id="boundarySelect">
-        <option value="0">No Boundary Limit</option>
-        <option value="100">100 Meters Circle</option>
-        <option value="250" selected>250 Meters Circle</option>
-        <option value="500">500 Meters Circle</option>
-        <option value="1000">1 Kilometer Circle</option>
-      </select>
-
-      <button onclick="startGame()" style="margin-top: 12px;">🚀 Start Game</button>
-    </div>
-
+    <h2>Lobby: Room <span id="displayRoomCode"></span></h2>
     <div class="card">
       <h3>Players Joined</h3>
       <div id="playersList"></div>
     </div>
+    <div class="card" id="lobbySummary" style="font-size: 13px; color: var(--text-muted);"></div>
+    <button id="startBtn" onclick="startGame()" style="display: none;">🔥 Launch Match Now</button>
+    <button class="secondary" onclick="leaveLobby()">Leave Lobby</button>
   </div>
 
-  <!-- 3. GAME SCREEN -->
+  <!-- ==========================================
+       3. GAME SCREEN (50% MAP / 50% FEATURES)
+       ========================================== -->
   <div id="screen-game" class="screen">
-    <!-- Top HUD -->
-    <div class="hud">
-      <span id="roleBadge">Role: Hider</span>
-      <span id="timeRemaining">⏳ 00:00</span>
-      <span id="nextUpdate">📡 Live</span>
+    <!-- TOP 50%: MAP -->
+    <div class="map-half">
+      <div id="map"></div>
+      <button class="recenter-btn" onclick="recenterMap()">🎯 Center GPS</button>
     </div>
 
-    <!-- Dynamic Alert Banners -->
-    <div id="headStartBanner" class="alert-banner alert-warning"></div>
-    <div id="outOfBoundsBanner" class="alert-banner alert-danger">🚨 OUT OF BOUNDS! Return to the blue circle or Catchers see you live!</div>
-    <div id="proximityBanner" class="alert-banner alert-danger">⚠️ PROXIMITY ALERT: Enemy within 50m!</div>
-
-    <!-- Map Size Toggle Buttons -->
-    <div class="view-controls">
-      <button id="btnSplit" class="active-view" onclick="setMapSize('split')">⚡ Split View</button>
-      <button id="btnFull" onclick="setMapSize('full')">🗺️ Full Map</button>
-      <button id="btnMini" onclick="setMapSize('mini')">💬 Controls & Chat</button>
-    </div>
-
-    <!-- Map Container -->
-    <div id="map" class="map-split"></div>
-
-    <!-- Bottom Controls & Chat Drawer -->
-    <div id="gameDrawer">
-      <div class="action-row">
-        <button id="caughtBtn" class="danger" onclick="markSelfCaught()" style="display:none;">🏳️ I'm Caught!</button>
-        <button id="radarBtn" class="secondary" onclick="triggerRadarScan()" style="display:none;">📡 Radar Scan (Force Ping)</button>
+    <!-- BOTTOM 50%: FEATURES DASHBOARD -->
+    <div class="features-half">
+      <!-- HUD Status -->
+      <div class="hud-bar">
+        <span id="roleBadge">🏃 Hider</span>
+        <span id="timeRemaining">⏳ 00:00</span>
+        <span id="nextUpdate">📡 Live</span>
       </div>
 
-      <!-- Team / Room Chat -->
-      <div class="chat-box">
+      <!-- Dynamic Alert Banners -->
+      <div id="headStartBanner" class="alert-banner alert-warning"></div>
+      <div id="outOfBoundsBanner" class="alert-banner alert-danger">🚨 OUT OF BOUNDS! Return to circle or your LIVE location is exposed!</div>
+      <div id="proximityBanner" class="alert-banner alert-danger">📳 PROXIMITY ALERT: Catcher within 50m!</div>
+
+      <!-- Role Feature Buttons -->
+      <div class="feature-buttons">
+        <button id="radarBtn" class="secondary" onclick="triggerRadarScan()" style="display:none;">📡 Radar Scan (Force Ping)</button>
+        <button id="caughtBtn" class="danger" onclick="markSelfCaught()" style="display:none;">🏳️ I'm Caught</button>
+        <button id="hostEndBtn" class="danger" onclick="endGame('🛑 Host ended the match.')" style="display:none;">🛑 End Game</button>
+      </div>
+
+      <!-- Quick-Chat Pings -->
+      <div class="quick-pings">
+        <button onclick="sendQuickPing('🆘 Need backup here!')">🆘 Need backup!</button>
+        <button onclick="sendQuickPing('👀 Spotted a Hider!')">👀 Spotted Hider!</button>
+        <button onclick="sendQuickPing('📍 Converge on my pin!')">📍 Converge on me!</button>
+        <button onclick="sendQuickPing('🏃 Moving North!')">🏃 Moving North!</button>
+      </div>
+
+      <!-- Live Room Chat -->
+      <div class="chat-container">
         <div id="chatMessages"></div>
-        <div class="quick-pings">
-          <button onclick="sendQuickPing('🆘 Need backup here!')">🆘 Need backup</button>
-          <button onclick="sendQuickPing('👀 Spotted a Hider!')">👀 Spotted Hider</button>
-          <button onclick="sendQuickPing('⬆️ Moving North')">⬆️ Moving North</button>
-          <button onclick="sendQuickPing('🏃 On the move!')">🏃 On the move</button>
-        </div>
-        <div class="chat-input-row">
-          <input type="text" id="chatInput" placeholder="Message room..." />
+        <div class="chat-input-bar">
+          <input type="text" id="chatInput" placeholder="Send message..." />
           <button onclick="sendCustomChat()">Send</button>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- 4. END SCREEN -->
+  <!-- ==========================================
+       4. END SCREEN (AUTO-CLEARS FIREBASE)
+       ========================================== -->
   <div id="screen-end" class="screen">
     <h1>🏆 Game Over</h1>
     <div class="card" style="text-align: center;">
-      <h2 id="winnerText"></h2>
-      <p style="color: var(--text-muted);">Location sharing has stopped.</p>
-      <button onclick="clearAndRestart()">Back to Home</button>
+      <h2 id="winnerText">Match Ended</h2>
+      <p style="color: var(--success); font-size: 13px;">✅ Room & GPS data wiped from Firebase.</p>
+      <button onclick="clearAndRestart()">Back to Home Screen</button>
     </div>
   </div>
 
   <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
-  <!-- Firebase & Game Logic -->
+  <!-- Firebase & Core Game Logic -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getDatabase, ref, set, get, push, onValue, update, remove } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
     // =========================================================
-    // --- 1. PASTE YOUR FIREBASE CONFIG HERE ---
+    // --- PASTE YOUR FIREBASE CONFIG HERE ---
     // =========================================================
     const firebaseConfig = {
   apiKey: "AIzaSyCrorYSjzN5rooWa4keUkPvSGNQt0tZ1sE",
@@ -376,7 +412,6 @@
   appId: "1:444030203067:web:6bed8c6ebff8662d53e59e"
 };
 
-    // Fallback: Automatically adds the databaseURL if Firebase didn't include it in your copy-paste
     if (!firebaseConfig.databaseURL && firebaseConfig.projectId) {
       firebaseConfig.databaseURL = `https://${firebaseConfig.projectId}-default-rtdb.firebaseio.com`;
     }
@@ -384,447 +419,466 @@
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
 
-    // --- GLOBAL STATE ---
+    // --- STATE VARIABLES ---
     let myName = "";
     let myRoom = "";
-    let isHost = false;
     let myRole = "Hider";
     let myStatus = "Active";
-    let wakeLock = null;
+    let isHost = false;
+    let myLat = null;
+    let myLng = null;
 
-    // Map & Timers
+    // Setup Map (Home Screen Boundary Picker)
+    let setupMap = null;
+    let setupCircle = null;
+    let chosenCenter = { lat: 18.5204, lng: 73.8567 };
+
+    // Game Map & Timers
     let map = null;
     let markers = {};
     let boundaryCircle = null;
     let locationTimer = null;
     let watchId = null;
+    let outOfBoundsWatchId = null;
     let countdownTimer = null;
 
-    // Room Config synced from Firebase
+    // Synced Match Settings
     let updateIntervalMs = 300000;
     let nextPingTime = 0;
     let gameEndTime = 0;
     let headStartEndTime = 0;
-    let boundaryData = null; // { lat, lng, radius }
+    let boundaryData = null;
     let lastRadarHandled = 0;
     let lastVibrateTime = 0;
+    let gameActive = false;
 
-    // --- AUTO-FILL REJOIN MEMORY ON LOAD ---
-    window.addEventListener('DOMContentLoaded', () => {
+    const HIGH_PRECISION_GPS = { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 };
+
+    // --- 1. INITIALIZE HOME MAP & AUTO-REJOIN MEMORY ---
+    window.addEventListener('DOMContentLoaded', async () => {
+      initSetupMap();
+
       const savedName = localStorage.getItem('manhunt_name');
       const savedRoom = localStorage.getItem('manhunt_room');
       if (savedName) document.getElementById('playerName').value = savedName;
       if (savedRoom) document.getElementById('roomCode').value = savedRoom;
+
+      // Auto-Rejoin if player closed tab during an active game
+      if (savedName && savedRoom) {
+        try {
+          const roomSnap = await get(ref(db, `rooms/${savedRoom}`));
+          if (roomSnap.exists()) {
+            const roomVal = roomSnap.val();
+            if (roomVal.players && roomVal.players[savedName]) {
+              myName = savedName;
+              myRoom = savedRoom;
+              isHost = (roomVal.host === myName);
+              myRole = roomVal.players[myName].role;
+              myStatus = roomVal.players[myName].status || "Active";
+              if (roomVal.status === 'playing') {
+                initGame();
+              } else if (roomVal.status === 'lobby') {
+                enterLobby();
+              }
+            }
+          }
+        } catch (e) { console.warn("Rejoin check skipped:", e); }
+      }
     });
 
-    function saveSession() {
-      localStorage.setItem('manhunt_name', myName);
-      localStorage.setItem('manhunt_room', myRoom);
+    function initSetupMap() {
+      setupMap = L.map('setupMap').setView([chosenCenter.lat, chosenCenter.lng], 15);
+      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(setupMap);
+      updateSetupCircle();
+
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition((pos) => {
+          chosenCenter = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+          setupMap.setView([chosenCenter.lat, chosenCenter.lng], 16);
+          updateSetupCircle();
+        }, () => {}, HIGH_PRECISION_GPS);
+      }
+
+      setupMap.on('click', (e) => {
+        chosenCenter = { lat: e.latlng.lat, lng: e.latlng.lng };
+        updateSetupCircle();
+      });
+    }
+
+    window.updateSetupCircle = () => {
+      if (!setupMap) return;
+      const radius = parseInt(document.getElementById('boundarySelect').value) || 0;
+      if (setupCircle) setupMap.removeLayer(setupCircle);
+      if (radius > 0) {
+        setupCircle = L.circle([chosenCenter.lat, chosenCenter.lng], {
+          color: '#38bdf8', fillColor: '#38bdf8', fillOpacity: 0.2, radius: radius
+        }).addTo(setupMap);
+      }
+    };
+
+    function switchScreen(id) {
+      document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+      document.getElementById(id).classList.add('active');
     }
 
     function showError(msg) {
       document.getElementById('homeError').innerText = msg;
     }
 
-    function switchScreen(screenId) {
-      document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-      document.getElementById(screenId).classList.add('active');
+    function saveSession() {
+      localStorage.setItem('manhunt_name', myName);
+      localStorage.setItem('manhunt_room', myRoom);
     }
 
-    // --- MAP VIEW SIZING (SPLIT / FULL / MINI) ---
-    window.setMapSize = (mode) => {
-      const mapEl = document.getElementById('map');
-      const drawerEl = document.getElementById('gameDrawer');
-      mapEl.className = `map-${mode}`;
-      
-      document.getElementById('btnSplit').classList.toggle('active-view', mode === 'split');
-      document.getElementById('btnFull').classList.toggle('active-view', mode === 'full');
-      document.getElementById('btnMini').classList.toggle('active-view', mode === 'mini');
-
-      drawerEl.style.display = (mode === 'full') ? 'none' : 'flex';
-      if (map) setTimeout(() => map.invalidateSize(), 260);
-    };
-
-    // --- CREATE OR JOIN ROOM (WITH REJOIN SUPPORT) ---
+    // --- 2. CREATE OR JOIN ROOM ---
     window.createRoom = async () => {
       myName = document.getElementById('playerName').value.trim();
       myRoom = document.getElementById('roomCode').value.trim();
-      if (!myName || !myRoom) return showError("Enter your name and a room code.");
+      myRole = document.getElementById('initialRole').value;
+      if (!myName || !myRoom) return showError("Please enter both your Name and a Room Code.");
 
-      const roomRef = ref(db, `rooms/${myRoom}`);
-      const snapshot = await get(roomRef);
-      if (snapshot.exists()) return showError("Room already exists. Tap 'Join / Rejoin Room'.");
+      const durationMins = parseInt(document.getElementById('gameDuration').value) || 30;
+      const pingMs = parseInt(document.getElementById('pingIntervalSelect').value);
+      const headStartMs = parseInt(document.getElementById('headStartSelect').value);
+      const boundaryRadius = parseInt(document.getElementById('boundarySelect').value);
 
       isHost = true;
       saveSession();
-      await set(roomRef, { status: 'lobby', host: myName });
+
+      const roomConfig = {
+        status: 'lobby',
+        host: myName,
+        durationMins: durationMins,
+        pingInterval: pingMs,
+        headStartMs: headStartMs,
+        boundary: boundaryRadius > 0 ? { lat: chosenCenter.lat, lng: chosenCenter.lng, radius: boundaryRadius } : null
+      };
+
+      await set(ref(db, `rooms/${myRoom}`), roomConfig);
+      await set(ref(db, `rooms/${myRoom}/players/${myName}`), { role: myRole, status: 'Active' });
       enterLobby();
     };
 
     window.joinRoom = async () => {
       myName = document.getElementById('playerName').value.trim();
       myRoom = document.getElementById('roomCode').value.trim();
-      if (!myName || !myRoom) return showError("Enter your name and a room code.");
+      myRole = document.getElementById('initialRole').value;
+      if (!myName || !myRoom) return showError("Please enter both your Name and a Room Code.");
 
-      const roomRef = ref(db, `rooms/${myRoom}`);
-      const snapshot = await get(roomRef);
-      if (!snapshot.exists()) return showError("Room doesn't exist. Check the code!");
+      const roomSnap = await get(ref(db, `rooms/${myRoom}`));
+      if (!roomSnap.exists()) return showError("Room not found! Create it first.");
 
-      const roomVal = snapshot.val();
-      if (roomVal.host === myName) isHost = true;
+      const roomVal = roomSnap.val();
+      isHost = (roomVal.host === myName);
       saveSession();
 
-      // Rejoin support: if game is already playing, check if player was in the room
+      // Rejoin support if already playing
       if (roomVal.status === 'playing') {
-        const playerSnap = await get(ref(db, `rooms/${myRoom}/players/${myName}`));
-        if (playerSnap.exists()) {
-          myRole = playerSnap.val().role;
-          myStatus = playerSnap.val().status || 'Active';
+        if (roomVal.players && roomVal.players[myName]) {
+          myRole = roomVal.players[myName].role;
+          myStatus = roomVal.players[myName].status || 'Active';
           initGame();
           return;
-        } else {
-          return showError("Game already in progress!");
         }
+        return showError("Game already started!");
       }
 
+      await set(ref(db, `rooms/${myRoom}/players/${myName}`), { role: myRole, status: 'Active' });
       enterLobby();
     };
 
-    // --- LOBBY LOGIC ---
-    async function enterLobby() {
+    // --- 3. LOBBY LOGIC ---
+    function enterLobby() {
       switchScreen('screen-lobby');
       document.getElementById('displayRoomCode').innerText = myRoom;
-      if (isHost) document.getElementById('hostControls').style.display = 'block';
+      document.getElementById('startBtn').style.display = isHost ? 'block' : 'none';
 
-      const myPlayerRef = ref(db, `rooms/${myRoom}/players/${myName}`);
-      const existing = await get(myPlayerRef);
-      if (!existing.exists()) {
-        await set(myPlayerRef, { role: 'Hider', status: 'Active' });
-      }
+      onValue(ref(db, `rooms/${myRoom}`), (snap) => {
+        if (!snap.exists()) return;
+        const val = snap.val();
 
-      // Listen for players in lobby
-      onValue(ref(db, `rooms/${myRoom}/players`), (snapshot) => {
-        const players = snapshot.val() || {};
-        const listDiv = document.getElementById('playersList');
-        listDiv.innerHTML = '';
-        
-        for (const [name, data] of Object.entries(players)) {
-          if (name === myName) {
-            myRole = data.role;
-            myStatus = data.status;
-          }
-          
-          const div = document.createElement('div');
-          div.className = 'player-list-item';
-          
-          let roleSelect = `<span>${data.role}</span>`;
-          if (isHost || name === myName) {
-            roleSelect = `
-              <select onchange="window.changeRole('${name}', this.value)" style="width: auto; padding: 6px; margin: 0;">
-                <option value="Hider" ${data.role === 'Hider' ? 'selected' : ''}>🏃 Hider</option>
-                <option value="Catcher" ${data.role === 'Catcher' ? 'selected' : ''}>🕵️ Catcher</option>
-              </select>
-            `;
-          }
-          div.innerHTML = `<span><b>${name}</b></span> ${roleSelect}`;
-          listDiv.appendChild(div);
+        // Display Summary
+        const speedText = val.pingInterval === 0 ? "Live GPS" : `Every ${val.pingInterval / 60000} Min`;
+        const hsText = `${(val.headStartMs || 0) / 60000} Min`;
+        const bText = val.boundary ? `${val.boundary.radius}m Circle` : "None";
+        document.getElementById('lobbySummary').innerHTML =
+          `<b>Settings:</b> ${val.durationMins}m Match | ${speedText} | Head-Start: ${hsText} | Boundary: ${bText}`;
+
+        // Players List
+        const players = val.players || {};
+        const list = document.getElementById('playersList');
+        list.innerHTML = '';
+        for (const [pName, pData] of Object.entries(players)) {
+          if (pName === myName) myRole = pData.role;
+          const row = document.createElement('div');
+          row.className = 'player-row';
+          row.innerHTML = `
+            <span><b>${pName}</b> ${pName === val.host ? '👑' : ''}</span>
+            <select onchange="window.changeRole('${pName}', this.value)" style="width:auto; padding:4px 8px; margin:0;" ${(isHost || pName === myName) ? '' : 'disabled'}>
+              <option value="Hider" ${pData.role === 'Hider' ? 'selected' : ''}>🏃 Hider</option>
+              <option value="Catcher" ${pData.role === 'Catcher' ? 'selected' : ''}>🕵️ Catcher</option>
+            </select>
+          `;
+          list.appendChild(row);
         }
-      });
 
-      // Listen for game status changes
-      onValue(ref(db, `rooms/${myRoom}/status`), (snapshot) => {
-        if (snapshot.val() === 'playing') initGame();
-        if (snapshot.val() === 'ended') showEndScreen();
+        if (val.status === 'playing' && !gameActive) initGame();
       });
     }
 
-    window.changeRole = (playerName, newRole) => {
-      update(ref(db, `rooms/${myRoom}/players/${playerName}`), { role: newRole });
+    window.changeRole = (pName, role) => {
+      update(ref(db, `rooms/${myRoom}/players/${pName}`), { role });
     };
 
-    // --- START GAME (HOST SETS TIMERS & BOUNDARY) ---
-    window.startGame = () => {
-      const durationMins = parseInt(document.getElementById('gameDuration').value) || 30;
-      const pingMs = parseInt(document.getElementById('pingIntervalSelect').value);
-      const headStartMs = parseInt(document.getElementById('headStartSelect').value);
-      const boundaryRadius = parseInt(document.getElementById('boundarySelect').value);
+    window.leaveLobby = () => {
+      localStorage.removeItem('manhunt_room');
+      location.reload();
+    };
 
+    window.startGame = async () => {
+      const snap = await get(ref(db, `rooms/${myRoom}`));
+      const val = snap.val();
       const now = Date.now();
-      const roomSettings = {
+      await update(ref(db, `rooms/${myRoom}`), {
         status: 'playing',
-        endTime: now + (durationMins * 60 * 1000),
-        pingInterval: pingMs,
-        headStartEndTime: now + headStartMs,
+        endTime: now + (val.durationMins * 60000),
+        headStartEndTime: now + (val.headStartMs || 0),
         radarSweep: 0
-      };
-
-      // If host enabled a boundary, grab host's current GPS as the center
-      if (boundaryRadius > 0 && navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition((pos) => {
-          roomSettings.boundary = {
-            lat: pos.coords.latitude,
-            lng: pos.coords.longitude,
-            radius: boundaryRadius
-          };
-          update(ref(db, `rooms/${myRoom}`), roomSettings);
-        }, () => {
-          alert("Could not get GPS for boundary center; starting without boundary.");
-          update(ref(db, `rooms/${myRoom}`), roomSettings);
-        }, { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 });
-      } else {
-        update(ref(db, `rooms/${myRoom}`), roomSettings);
-      }
+      });
     };
 
-    // --- INITIALIZE GAME SCREEN ---
-    let gameInitialized = false;
+    // --- 4. GAME ENGINE & 50/50 SPLIT UI ---
     async function initGame() {
-      if (gameInitialized) return;
-      gameInitialized = true;
-
+      if (gameActive) return;
+      gameActive = true;
       switchScreen('screen-game');
-      requestWakeLock();
 
-      // Load room settings
-      const roomSnap = await get(ref(db, `rooms/${myRoom}`));
-      const roomVal = roomSnap.val();
-      gameEndTime = roomVal.endTime;
-      updateIntervalMs = roomVal.pingInterval ?? 300000;
-      headStartEndTime = roomVal.headStartEndTime ?? 0;
-      boundaryData = roomVal.boundary || null;
+      const snap = await get(ref(db, `rooms/${myRoom}`));
+      const val = snap.val();
+      gameEndTime = val.endTime;
+      updateIntervalMs = val.pingInterval ?? 300000;
+      headStartEndTime = val.headStartEndTime ?? 0;
+      boundaryData = val.boundary || null;
 
-      // Setup Role UI
+      // Setup Role Buttons
       document.getElementById('roleBadge').innerText = `${myRole === 'Catcher' ? '🕵️' : '🏃'} ${myRole}`;
-      if (myRole === 'Hider' && myStatus !== 'Caught') {
-        document.getElementById('caughtBtn').style.display = 'block';
-      }
-      if (myRole === 'Catcher') {
-        document.getElementById('radarBtn').style.display = 'block';
-      }
+      document.getElementById('radarBtn').style.display = (myRole === 'Catcher') ? 'block' : 'none';
+      document.getElementById('caughtBtn').style.display = (myRole === 'Hider' && myStatus !== 'Caught') ? 'block' : 'none';
+      document.getElementById('hostEndBtn').style.display = isHost ? 'block' : 'none';
 
-      initMap();
-      startLocationTracking();
+      // Init 50% Top Map
+      map = L.map('map').setView([chosenCenter.lat, chosenCenter.lng], 16);
+      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+      if (boundaryData) {
+        boundaryCircle = L.circle([boundaryData.lat, boundaryData.lng], {
+          color: '#38bdf8', fillColor: '#38bdf8', fillOpacity: 0.12, radius: boundaryData.radius
+        }).addTo(map);
+      }
+      setTimeout(() => map.invalidateSize(), 300);
+
+      startGPS();
       countdownTimer = setInterval(updateHUD, 1000);
 
-      // Listen to players' locations & statuses
-      onValue(ref(db, `rooms/${myRoom}/players`), (snapshot) => {
-        const players = snapshot.val() || {};
+      // Listen for Players & Proximity
+      onValue(ref(db, `rooms/${myRoom}/players`), (pSnap) => {
+        const players = pSnap.val() || {};
         if (players[myName]) myStatus = players[myName].status;
-        updateMapAndProximity(players);
-        checkWinCondition(players);
+        renderPlayersAndAlerts(players);
+        checkWin(players);
       });
 
       // Listen for Catcher's Radar Scan
-      onValue(ref(db, `rooms/${myRoom}/radarSweep`), (snapshot) => {
-        const sweepTime = snapshot.val() || 0;
-        if (sweepTime > lastRadarHandled && (Date.now() - sweepTime < 15000)) {
-          lastRadarHandled = sweepTime;
+      onValue(ref(db, `rooms/${myRoom}/radarSweep`), (rSnap) => {
+        const sweep = rSnap.val() || 0;
+        if (sweep > lastRadarHandled && (Date.now() - sweep < 15000)) {
+          lastRadarHandled = sweep;
           if (myRole === 'Hider' && myStatus !== 'Caught') {
-            sendLocation(true); // Force immediate high-precision ping
+            forceHighPrecisionPing(true);
           }
         }
       });
 
-      // Listen to Chat
-      onValue(ref(db, `rooms/${myRoom}/chat`), (snapshot) => {
-        const chats = snapshot.val() || {};
-        const chatBox = document.getElementById('chatMessages');
-        chatBox.innerHTML = '';
+      // Listen for Chat & Quick Pings
+      onValue(ref(db, `rooms/${myRoom}/chat`), (cSnap) => {
+        const chats = cSnap.val() || {};
+        const box = document.getElementById('chatMessages');
+        box.innerHTML = '';
         for (const msg of Object.values(chats)) {
-          const div = document.createElement('div');
-          div.className = 'chat-msg';
-          div.innerHTML = `<b>${msg.sender}:</b> ${msg.text}`;
-          chatBox.appendChild(div);
+          const d = document.createElement('div');
+          d.className = 'chat-line';
+          d.innerHTML = `<b>${msg.sender}:</b> ${msg.text}`;
+          box.appendChild(d);
         }
-        chatBox.scrollTop = chatBox.scrollHeight;
+        box.scrollTop = box.scrollHeight;
+      });
+
+      // Listen for Game End & Wipe Firebase
+      onValue(ref(db, `rooms/${myRoom}/status`), async (sSnap) => {
+        if (sSnap.val() === 'ended') {
+          const resSnap = await get(ref(db, `rooms/${myRoom}/result`));
+          finishAndCleanUp(resSnap.val() || "Match Ended!");
+        }
       });
     }
 
-    // --- HIGH-PRECISION GPS & LIVE MODE ---
-    function startLocationTracking() {
-      const geoOptions = { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 };
+    // --- 5. HIGH-PRECISION GPS & BOUNDARY EXPOSURE ---
+    function startGPS() {
+      if (!navigator.geolocation) return;
 
       if (updateIntervalMs === 0) {
-        // Continuous Live Mode
         document.getElementById('nextUpdate').innerText = "📡 Live GPS";
         watchId = navigator.geolocation.watchPosition(
-          (pos) => pushCoordinates(pos),
-          (err) => console.warn("GPS Watch Error:", err),
-          geoOptions
+          (pos) => handlePosition(pos, false),
+          (err) => console.warn(err),
+          HIGH_PRECISION_GPS
         );
       } else {
-        // Timed Interval Mode
-        sendLocation(false);
-        locationTimer = setInterval(() => sendLocation(false), updateIntervalMs);
+        forceHighPrecisionPing(false);
+        locationTimer = setInterval(() => forceHighPrecisionPing(false), updateIntervalMs);
       }
     }
 
-    function sendLocation(isForcedRadar = false) {
-      if (!navigator.geolocation) return;
+    function forceHighPrecisionPing(isRadar) {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
-          pushCoordinates(pos);
-          if (!isForcedRadar) nextPingTime = Date.now() + updateIntervalMs;
+          handlePosition(pos, isRadar);
+          if (!isRadar) nextPingTime = Date.now() + updateIntervalMs;
         },
-        (err) => console.warn("GPS Error:", err),
-        { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 }
+        (err) => console.warn(err),
+        HIGH_PRECISION_GPS
       );
     }
 
-    function pushCoordinates(pos) {
-      const lat = pos.coords.latitude;
-      const lng = pos.coords.longitude;
+    function handlePosition(pos, isRadar) {
+      myLat = pos.coords.latitude;
+      myLng = pos.coords.longitude;
       let outOfBounds = false;
 
-      // Check Play-Area Boundary for Hiders
       if (boundaryData && myRole === 'Hider' && myStatus !== 'Caught') {
-        const distFromCenter = getDistanceMeters(lat, lng, boundaryData.lat, boundaryData.lng);
-        outOfBounds = distFromCenter > boundaryData.radius;
+        const dist = calcMeters(myLat, myLng, boundaryData.lat, boundaryData.lng);
+        outOfBounds = dist > boundaryData.radius;
         document.getElementById('outOfBoundsBanner').style.display = outOfBounds ? 'block' : 'none';
+
+        // If Hider steps outside boundary on a timed mode, force continuous Live exposure until back inside
+        if (outOfBounds && updateIntervalMs > 0 && outOfBoundsWatchId === null) {
+          outOfBoundsWatchId = navigator.geolocation.watchPosition(
+            (p) => handlePosition(p, true),
+            () => {},
+            HIGH_PRECISION_GPS
+          );
+        } else if (!outOfBounds && outOfBoundsWatchId !== null) {
+          navigator.geolocation.clearWatch(outOfBoundsWatchId);
+          outOfBoundsWatchId = null;
+        }
       }
 
       update(ref(db, `rooms/${myRoom}/players/${myName}`), {
-        lat: lat,
-        lng: lng,
+        lat: myLat,
+        lng: myLng,
         outOfBounds: outOfBounds,
         lastUpdated: Date.now()
       });
     }
 
-    // --- HUD TIMERS & HEAD-START ---
-    function updateHUD() {
-      const now = Date.now();
-      
-      // 1. Game End Countdown
-      const timeLeft = Math.max(0, Math.floor((gameEndTime - now) / 1000));
-      const mins = Math.floor(timeLeft / 60).toString().padStart(2, '0');
-      const secs = (timeLeft % 60).toString().padStart(2, '0');
-      document.getElementById('timeRemaining').innerText = `⏳ ${mins}:${secs}`;
-      
-      if (timeLeft === 0 && isHost) endGame('🏃 Hiders Win! Time ran out.');
+    window.recenterMap = () => {
+      if (map && myLat && myLng) map.setView([myLat, myLng], 17);
+    };
 
-      // 2. Head-Start Banner
-      const headStartBanner = document.getElementById('headStartBanner');
-      if (now < headStartEndTime) {
-        const hsLeft = Math.ceil((headStartEndTime - now) / 1000);
-        headStartBanner.style.display = 'block';
-        headStartBanner.innerText = `🙈 HEAD-START: Hiders hidden from Catchers for ${hsLeft}s!`;
-      } else {
-        headStartBanner.style.display = 'none';
-      }
-
-      // 3. Next Ping Countdown
-      if (updateIntervalMs > 0) {
-        const pingLeft = Math.max(0, Math.floor((nextPingTime - now) / 1000));
-        const pmins = Math.floor(pingLeft / 60).toString().padStart(2, '0');
-        const psecs = (pingLeft % 60).toString().padStart(2, '0');
-        document.getElementById('nextUpdate').innerText = `📡 ${pmins}:${psecs}`;
-      }
-    }
-
-    // --- MAP, STEALTH FILTER & PROXIMITY ALERTS ---
-    function initMap() {
-      map = L.map('map').setView([20.5937, 78.9629], 5);
-      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap'
-      }).addTo(map);
-
-      if (boundaryData) {
-        boundaryCircle = L.circle([boundaryData.lat, boundaryData.lng], {
-          color: '#38bdf8',
-          fillColor: '#38bdf8',
-          fillOpacity: 0.1,
-          radius: boundaryData.radius
-        }).addTo(map);
-      }
-      setTimeout(() => map.invalidateSize(), 400);
-    }
-
-    let hasCenteredMap = false;
-    function updateMapAndProximity(players) {
+    // --- 6. MAP PINS, HEAD-START BLINDNESS & 50M VIBRATION ---
+    let centeredOnce = false;
+    function renderPlayersAndAlerts(players) {
       if (!map) return;
       const now = Date.now();
-      const isHeadStart = now < headStartEndTime;
-      const myData = players[myName];
-      let enemyNearby = false;
-      let bounds = [];
+      const inHeadStart = now < headStartEndTime;
+      const me = players[myName];
+      let dangerClose = false;
 
-      for (const [name, data] of Object.entries(players)) {
-        if (!data.lat || !data.lng) continue;
+      for (const [name, p] of Object.entries(players)) {
+        if (!p.lat || !p.lng) continue;
 
-        // PROXIMITY CHECK (50 meters between active Hider & Catcher)
-        if (myData && myData.lat && name !== myName && myStatus !== 'Caught' && data.status !== 'Caught') {
-          if (myRole !== data.role) {
-            const dist = getDistanceMeters(myData.lat, myData.lng, data.lat, data.lng);
-            if (dist <= 50) enemyNearby = true;
-          }
+        // 50m Proximity Check between active Hider & Catcher
+        if (me && me.lat && name !== myName && myStatus !== 'Caught' && p.status !== 'Caught' && myRole !== p.role) {
+          const d = calcMeters(me.lat, me.lng, p.lat, p.lng);
+          if (d <= 50) dangerClose = true;
         }
 
-        // STEALTH RULE 1: Hiders cannot see other active Hiders
-        if (myRole === 'Hider' && data.role === 'Hider' && name !== myName && data.status !== 'Caught') {
+        // Head-Start Timer Rule: Catchers see a blank map (no Hiders) unless Hider broke boundary
+        if (myRole === 'Catcher' && p.role === 'Hider' && inHeadStart && !p.outOfBounds) {
           if (markers[name]) { map.removeLayer(markers[name]); delete markers[name]; }
           continue;
         }
 
-        // STEALTH RULE 2: During Head-Start, Catchers cannot see Hiders (unless Hider is Out of Bounds)
-        if (myRole === 'Catcher' && data.role === 'Hider' && isHeadStart && !data.outOfBounds) {
-          if (markers[name]) { map.removeLayer(markers[name]); delete markers[name]; }
-          continue;
-        }
-
-        const pos = [data.lat, data.lng];
-        bounds.push(pos);
-
-        // Pin Colors: Catcher = Red, Hider = Cyan Blue, Caught = Grey, OutOfBounds = Yellow
-        let color = data.role === 'Catcher' ? '#f43f5e' : '#38bdf8';
-        if (data.outOfBounds) color = '#fbbf24';
-        if (data.status === 'Caught') color = '#64748b';
-
-        const markerHtml = `<div style="background:${color}; width:20px; height:20px; border-radius:50%; border:3px solid white; box-shadow: 0 0 8px ${color};"></div>`;
-        const icon = L.divIcon({ html: markerHtml, className: '' });
+        const color = p.status === 'Caught' ? '#64748b' : (p.outOfBounds ? '#fbbf24' : (p.role === 'Catcher' ? '#f43f5e' : '#38bdf8'));
+        const iconHtml = `<div style="background:${color};width:18px;height:18px;border-radius:50%;border:3px solid #fff;box-shadow:0 0 8px ${color};"></div>`;
+        const icon = L.divIcon({ html: iconHtml, className: '' });
 
         if (!markers[name]) {
-          markers[name] = L.marker(pos, { icon }).addTo(map);
+          markers[name] = L.marker([p.lat, p.lng], { icon }).addTo(map);
         } else {
-          markers[name].setLatLng(pos);
+          markers[name].setLatLng([p.lat, p.lng]);
           markers[name].setIcon(icon);
         }
 
-        const timeStr = new Date(data.lastUpdated).toLocaleTimeString();
-        let popupHtml = `<b>${name}</b> (${data.role})<br>Updated: ${timeStr}`;
-        if (data.outOfBounds) popupHtml += `<br><b style="color:#d97706;">⚠️ OUT OF BOUNDS</b>`;
-
-        if (myRole === 'Catcher' && data.role === 'Hider' && data.status !== 'Caught') {
-          popupHtml += `<br><button style="padding:6px; margin-top:6px; background:#f43f5e; color:white; border:none; border-radius:6px; width:100%;" onclick="window.markCaughtByCatcher('${name}')">Mark as Caught</button>`;
+        let pop = `<b>${name}</b> (${p.role})`;
+        if (p.outOfBounds) pop += `<br><b style="color:#d97706;">🚨 OUT OF BOUNDS (LIVE)</b>`;
+        if (myRole === 'Catcher' && p.role === 'Hider' && p.status !== 'Caught') {
+          pop += `<br><button style="margin-top:4px;padding:4px;background:#f43f5e;color:#fff;" onclick="window.catchHider('${name}')">Mark Caught</button>`;
         }
-        markers[name].bindPopup(popupHtml);
+        markers[name].bindPopup(pop);
       }
 
-      // Trigger Proximity Vibration & Banner
+      // Trigger 50m Proximity Vibration
       const proxBanner = document.getElementById('proximityBanner');
-      if (enemyNearby) {
+      if (dangerClose) {
         proxBanner.style.display = 'block';
-        if (now - lastVibrateTime > 10000 && navigator.vibrate) {
-          navigator.vibrate([300, 100, 300]);
+        if (now - lastVibrateTime > 8000 && navigator.vibrate) {
+          navigator.vibrate([300, 120, 300]);
           lastVibrateTime = now;
         }
       } else {
         proxBanner.style.display = 'none';
       }
 
-      if (!hasCenteredMap && bounds.length > 0) {
-        map.fitBounds(bounds, { padding: [40, 40], maxZoom: 17 });
-        hasCenteredMap = true;
+      if (!centeredOnce && me && me.lat) {
+        map.setView([me.lat, me.lng], 17);
+        centeredOnce = true;
       }
     }
 
-    // --- RADAR SCAN, CAUGHT & CHAT ACTIONS ---
+    function updateHUD() {
+      const now = Date.now();
+      const left = Math.max(0, Math.floor((gameEndTime - now) / 1000));
+      const m = String(Math.floor(left / 60)).padStart(2, '0');
+      const s = String(left % 60).padStart(2, '0');
+      document.getElementById('timeRemaining').innerText = `⏳ ${m}:${s}`;
+
+      if (left === 0 && isHost) endGame("🏃 Hiders Win! Time ran out.");
+
+      const hsBanner = document.getElementById('headStartBanner');
+      if (now < headStartEndTime) {
+        const hsSecs = Math.ceil((headStartEndTime - now) / 1000);
+        hsBanner.style.display = 'block';
+        hsBanner.innerText = `🙈 HEAD-START: Hiders invisible to Catchers for ${hsSecs}s!`;
+      } else {
+        hsBanner.style.display = 'none';
+      }
+
+      if (updateIntervalMs > 0) {
+        const pLeft = Math.max(0, Math.floor((nextPingTime - now) / 1000));
+        const pm = String(Math.floor(pLeft / 60)).padStart(2, '0');
+        const ps = String(pLeft % 60).padStart(2, '0');
+        document.getElementById('nextUpdate').innerText = `📡 ${pm}:${ps}`;
+      }
+    }
+
+    // --- 7. RADAR SCAN, CHAT & CLEAR FIREBASE ON GAME END ---
     window.triggerRadarScan = () => {
       update(ref(db, `rooms/${myRoom}`), { radarSweep: Date.now() });
-      sendQuickPing("📡 Used Radar Scan! Forcing Hider GPS ping...");
+      sendQuickPing("📡 RADAR SCAN ACTIVATED! Forcing instant Hider GPS update!");
       const btn = document.getElementById('radarBtn');
       btn.disabled = true;
-      btn.innerText = "📡 Radar Cooling Down (60s)";
+      btn.innerText = "📡 Radar Recharge (60s)";
       setTimeout(() => {
         btn.disabled = false;
         btn.innerText = "📡 Radar Scan (Force Ping)";
@@ -834,58 +888,58 @@
     window.markSelfCaught = () => {
       update(ref(db, `rooms/${myRoom}/players/${myName}`), { status: 'Caught', outOfBounds: false });
       document.getElementById('caughtBtn').style.display = 'none';
-      sendQuickPing("🏳️ I have been caught!");
+      sendQuickPing("🏳️ I got caught!");
     };
 
-    window.markCaughtByCatcher = (hiderName) => {
-      update(ref(db, `rooms/${myRoom}/players/${hiderName}`), { status: 'Caught', outOfBounds: false });
-      sendQuickPing(`🎯 Caught ${hiderName}!`);
+    window.catchHider = (target) => {
+      update(ref(db, `rooms/${myRoom}/players/${target}`), { status: 'Caught', outOfBounds: false });
+      sendQuickPing(`🎯 Caught ${target}!`);
     };
 
     window.sendQuickPing = (text) => {
-      push(ref(db, `rooms/${myRoom}/chat`), { sender: myName, text: text });
+      push(ref(db, `rooms/${myRoom}/chat`), { sender: myName, text });
     };
 
     window.sendCustomChat = () => {
-      const input = document.getElementById('chatInput');
-      const text = input.value.trim();
+      const inp = document.getElementById('chatInput');
+      const text = inp.value.trim();
       if (!text) return;
-      push(ref(db, `rooms/${myRoom}/chat`), { sender: myName, text: text });
-      input.value = '';
+      push(ref(db, `rooms/${myRoom}/chat`), { sender: myName, text });
+      inp.value = '';
     };
 
-    // --- WIN CONDITION & CLEANUP ---
-    function checkWinCondition(players) {
-      let activeHiders = 0;
+    function checkWin(players) {
       let totalHiders = 0;
-      for (const data of Object.values(players)) {
-        if (data.role === 'Hider') {
+      let activeHiders = 0;
+      for (const p of Object.values(players)) {
+        if (p.role === 'Hider') {
           totalHiders++;
-          if (data.status !== 'Caught') activeHiders++;
+          if (p.status !== 'Caught') activeHiders++;
         }
       }
       if (totalHiders > 0 && activeHiders === 0 && isHost) {
-        endGame('🕵️ Catchers Win! All Hiders caught.');
+        endGame("🕵️ Catchers Win! All Hiders caught.");
       }
     }
 
-    function endGame(message) {
-      update(ref(db, `rooms/${myRoom}`), { status: 'ended', result: message });
-    }
+    window.endGame = async (resultMessage) => {
+      await update(ref(db, `rooms/${myRoom}`), { status: 'ended', result: resultMessage });
+    };
 
-    async function showEndScreen() {
-      switchScreen('screen-end');
+    async function finishAndCleanUp(winnerMsg) {
       if (locationTimer) clearInterval(locationTimer);
-      if (watchId !== null) navigator.geolocation.clearWatch(watchId);
       if (countdownTimer) clearInterval(countdownTimer);
-      if (wakeLock) wakeLock.release();
+      if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+      if (outOfBoundsWatchId !== null) navigator.geolocation.clearWatch(outOfBoundsWatchId);
 
-      const snap = await get(ref(db, `rooms/${myRoom}/result`));
-      document.getElementById('winnerText').innerText = snap.val() || "Game Over";
+      document.getElementById('winnerText').innerText = winnerMsg;
+      switchScreen('screen-end');
+      localStorage.removeItem('manhunt_room');
 
-      if (isHost) {
-        setTimeout(() => remove(ref(db, `rooms/${myRoom}`)), 8000);
-      }
+      // Clear all room, player GPS, and chat data from Firebase once game ends
+      setTimeout(() => {
+        remove(ref(db, `rooms/${myRoom}`));
+      }, 2000);
     }
 
     window.clearAndRestart = () => {
@@ -893,20 +947,13 @@
       location.reload();
     };
 
-    // --- HELPERS: HAVERSINE DISTANCE & WAKE LOCK ---
-    function getDistanceMeters(lat1, lon1, lat2, lon2) {
+    function calcMeters(lat1, lon1, lat2, lon2) {
       const R = 6371e3;
-      const toRad = x => x * Math.PI / 180;
-      const dLat = toRad(lat2 - lat1);
-      const dLon = toRad(lon2 - lon1);
-      const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+      const rad = x => x * Math.PI / 180;
+      const dLat = rad(lat2 - lat1);
+      const dLon = rad(lon2 - lon1);
+      const a = Math.sin(dLat / 2) ** 2 + Math.cos(rad(lat1)) * Math.cos(rad(lat2)) * Math.sin(dLon / 2) ** 2;
       return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    }
-
-    async function requestWakeLock() {
-      try {
-        if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen');
-      } catch (e) { console.log("WakeLock error:", e); }
     }
   </script>
 </body>
