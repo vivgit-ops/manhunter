@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Manhunt Live</title>
+  
+  <!-- Leaflet CSS for the map -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  
+  <style>
+    :root {
+      --bg: #121212;
+      --surface: #1e1e1e;
+      --primary: #bb86fc;
+      --text: #ffffff;
+      --error: #cf6679;
+    }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+    }
+    .screen {
+      display: none;
+      flex-direction: column;
+      padding: 20px;
+      height: 100%;
+      box-sizing: border-box;
+    }
+    .active { display: flex; }
+    
+    h1, h2 { margin-top: 0; text-align: center; }
+    input, button, select {
+      padding: 15px;
+      margin: 10px 0;
+      border-radius: 8px;
+      border: none;
+      font-size: 16px;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    input, select { background-color: #333; color: white; }
+    button { background-color: var(--primary); color: #000; font-weight: bold; cursor: pointer; }
+    button:active { opacity: 0.8; }
+    
+    .card { background-color: var(--surface); padding: 15px; border-radius: 10px; margin-bottom: 15px; }
+    #map { flex-grow: 1; border-radius: 10px; margin-top: 10px; z-index: 1; }
+    
+    .safety-notice {
+      background-color: #332b00;
+      color: #ffd700;
+      padding: 10px;
+      border-radius: 8px;
+      font-size: 14px;
+      text-align: center;
+      margin-bottom: 15px;
+    }
+    
+    .hud {
+      display: flex;
+      justify-content: space-between;
+      background: var(--surface);
+      padding: 10px;
+      border-radius: 8px;
+      font-size: 14px;
+    }
+    
+    .player-list-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 0;
+      border-bottom: 1px solid #333;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 1. HOME SCREEN -->
+  <div id="screen-home" class="screen active">
+    <h1>Manhunt Live</h1>
+    <div class="card">
+      <input type="text" id="playerName" placeholder="Your Name" />
+      <input type="text" id="roomCode" placeholder="Room Code (e.g. 1234)" />
+      <button onclick="createRoom()">Create Room</button>
+      <button onclick="joinRoom()" style="background-color: #03dac6;">Join Room</button>
+    </div>
+    <div id="homeError" style="color: var(--error); text-align: center;"></div>
+  </div>
+
+  <!-- 2. LOBBY SCREEN -->
+  <div id="screen-lobby" class="screen">
+    <h2>Lobby: <span id="displayRoomCode"></span></h2>
+    <div class="safety-notice">
+      ⚠️ Stay in safe areas, avoid roads and private property, and don't play at night alone.
+    </div>
+    
+    <div class="card" id="hostControls" style="display: none;">
+      <label>Game Time (minutes):</label>
+      <input type="number" id="gameDuration" value="30" />
+      <button onclick="startGame()">Start Game</button>
+    </div>
+
+    <div class="card">
+      <h3>Players Joined</h3>
+      <div id="playersList"></div>
+    </div>
+  </div>
+
+  <!-- 3. GAME SCREEN -->
+  <div id="screen-game" class="screen">
+    <div class="hud">
+      <span id="timeRemaining">Time: 00:00</span>
+      <span id="nextUpdate">Next ping: 00:00</span>
+    </div>
+    <div id="map"></div>
+    <button id="caughtBtn" onclick="markSelfCaught()" style="display:none; background-color: var(--error); color: white;">I'm Caught!</button>
+  </div>
+
+  <!-- 4. END SCREEN -->
+  <div id="screen-end" class="screen">
+    <h1>Game Over</h1>
+    <h2 id="winnerText" style="color: var(--primary);"></h2>
+    <button onclick="location.reload()">Back to Home</button>
+  </div>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <!-- Firebase Setup & Game Logic -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getDatabase, ref, set, get, onValue, update, remove } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+
+    // --- 1. PASTE YOUR FIREBASE CONFIG HERE ---
+    const firebaseConfig = {
+  apiKey: "AIzaSyCrorYSjzN5rooWa4keUkPvSGNQt0tZ1sE",
+  authDomain: "manhunt-1.firebaseapp.com",
+  projectId: "manhunt-1",
+  storageBucket: "manhunt-1.firebasestorage.app",
+  messagingSenderId: "444030203067",
+  appId: "1:444030203067:web:6bed8c6ebff8662d53e59e"
+};
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    // --- GAME SETTINGS ---
+    const UPDATE_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+    
+    // --- GLOBAL VARIABLES ---
+    let myName = "";
+    let myRoom = "";
+    let isHost = false;
+    let myRole = "Hider"; 
+    let wakeLock = null;
+    let map = null;
+    let markers = {};
+    let locationTimer = null;
+    let countdownTimer = null;
+    let nextPingTime = 0;
+    let gameEndTime = 0;
+
+    // Make functions globally available for inline HTML onclick events
+    window.createRoom = async () => {
+      myName = document.getElementById('playerName').value.trim();
+      myRoom = document.getElementById('roomCode').value.trim();
+      if (!myName || !myRoom) return showError("Enter name and room code.");
+
+      const roomRef = ref(db, `rooms/${myRoom}`);
+      const snapshot = await get(roomRef);
+      if (snapshot.exists()) return showError("Room already exists. Try joining.");
+
+      isHost = true;
+      await set(roomRef, { status: 'lobby' });
+      joinLobby();
+    };
+
+    window.joinRoom = async () => {
+      myName = document.getElementById('playerName').value.trim();
+      myRoom = document.getElementById('roomCode').value.trim();
+      if (!myName || !myRoom) return showError("Enter name and room code.");
+
+      const roomRef = ref(db, `rooms/${myRoom}`);
+      const snapshot = await get(roomRef);
+      if (!snapshot.exists()) return showError("Room doesn't exist.");
+      if (snapshot.val().status !== 'lobby') return showError("Game already started.");
+
+      joinLobby();
+    };
+
+    function showError(msg) {
+      document.getElementById('homeError').innerText = msg;
+    }
+
+    function switchScreen(screenId) {
+      document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+      document.getElementById(screenId).classList.add('active');
+    }
+
+    // --- LOBBY LOGIC ---
+    async function joinLobby() {
+      switchScreen('screen-lobby');
+      document.getElementById('displayRoomCode').innerText = myRoom;
+      if (isHost) document.getElementById('hostControls').style.display = 'block';
+
+      const myPlayerRef = ref(db, `rooms/${myRoom}/players/${myName}`);
+      await set(myPlayerRef, { role: 'Hider', status: 'Active' });
+
+      // Listen for players joining/changing roles
+      onValue(ref(db, `rooms/${myRoom}/players`), (snapshot) => {
+        const players = snapshot.val() || {};
+        const listDiv = document.getElementById('playersList');
+        listDiv.innerHTML = '';
+        
+        for (const [name, data] of Object.entries(players)) {
+          if (name === myName) myRole = data.role; // Update local role
+          
+          const div = document.createElement('div');
+          div.className = 'player-list-item';
+          
+          let roleSelect = `<span>${data.role}</span>`;
+          if (isHost || name === myName) {
+            roleSelect = `
+              <select onchange="window.changeRole('${name}', this.value)" style="width: auto; padding: 5px;">
+                <option value="Hider" ${data.role === 'Hider' ? 'selected' : ''}>Hider</option>
+                <option value="Catcher" ${data.role === 'Catcher' ? 'selected' : ''}>Catcher</option>
+              </select>
+            `;
+          }
+          div.innerHTML = `<span>${name}</span> ${roleSelect}`;
+          listDiv.appendChild(div);
+        }
+      });
+
+      // Listen for game start
+      onValue(ref(db, `rooms/${myRoom}/status`), (snapshot) => {
+        if (snapshot.val() === 'playing') initGame();
+        if (snapshot.val() === 'ended') showEndScreen();
+      });
+    }
+
+    window.changeRole = (playerName, newRole) => {
+      update(ref(db, `rooms/${myRoom}/players/${playerName}`), { role: newRole });
+    };
+
+    window.startGame = () => {
+      const durationMins = parseInt(document.getElementById('gameDuration').value) || 30;
+      const endTime = Date.now() + (durationMins * 60 * 1000);
+      update(ref(db, `rooms/${myRoom}`), { status: 'playing', endTime: endTime });
+    };
+
+    // --- GAME LOGIC ---
+    async function initGame() {
+      switchScreen('screen-game');
+      if (myRole === 'Hider') document.getElementById('caughtBtn').style.display = 'block';
+      
+      requestWakeLock();
+      
+      // Get End Time
+      const snap = await get(ref(db, `rooms/${myRoom}/endTime`));
+      gameEndTime = snap.val();
+
+      initMap();
+      sendLocation(); // Immediate first ping
+      locationTimer = setInterval(sendLocation, UPDATE_INTERVAL_MS);
+      
+      // Start HUD countdowns
+      countdownTimer = setInterval(updateHUD, 1000);
+
+      // Listen to everyone's live data
+      onValue(ref(db, `rooms/${myRoom}/players`), (snapshot) => {
+        const players = snapshot.val() || {};
+        updateMap(players);
+        checkWinCondition(players);
+      });
+    }
+
+    function updateHUD() {
+      const now = Date.now();
+      
+      // Game Timer
+      const timeLeft = Math.max(0, Math.floor((gameEndTime - now) / 1000));
+      const mins = Math.floor(timeLeft / 60).toString().padStart(2, '0');
+      const secs = (timeLeft % 60).toString().padStart(2, '0');
+      document.getElementById('timeRemaining').innerText = `Time: ${mins}:${secs}`;
+      
+      if (timeLeft === 0 && isHost) endGame('Hiders survive! Time ran out.');
+
+      // Ping Timer
+      const pingLeft = Math.max(0, Math.floor((nextPingTime - now) / 1000));
+      const pmins = Math.floor(pingLeft / 60).toString().padStart(2, '0');
+      const psecs = (pingLeft % 60).toString().padStart(2, '0');
+      document.getElementById('nextUpdate').innerText = `Next ping: ${pmins}:${psecs}`;
+    }
+
+    function sendLocation() {
+      if (!navigator.geolocation) return alert("GPS not supported.");
+      
+      navigator.geolocation.getCurrentPosition((pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        
+        update(ref(db, `rooms/${myRoom}/players/${myName}`), {
+          lat: lat,
+          lng: lng,
+          lastUpdated: Date.now()
+        });
+        
+        nextPingTime = Date.now() + UPDATE_INTERVAL_MS;
+      }, (err) => {
+        alert("GPS Error: Please enable location permissions.");
+      }, { enableHighAccuracy: true });
+    }
+
+    // --- MAP LOGIC ---
+    function initMap() {
+      map = L.map('map').setView([0, 0], 2);
+      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap'
+      }).addTo(map);
+      setTimeout(() => map.invalidateSize(), 500); // Fixes map rendering on mobile
+    }
+
+    function updateMap(players) {
+      if (!map) return;
+      let bounds = [];
+
+      for (const [name, data] of Object.entries(players)) {
+        if (!data.lat || !data.lng) continue;
+
+        const pos = [data.lat, data.lng];
+        bounds.push(pos);
+        
+        // Pick marker color
+        let color = data.role === 'Catcher' ? 'red' : 'blue';
+        if (data.status === 'Caught') color = 'gray';
+
+        const markerHtml = `<div style="background-color:${color}; width:20px; height:20px; border-radius:50%; border:2px solid white;"></div>`;
+        const icon = L.divIcon({ html: markerHtml, className: '' });
+
+        if (!markers[name]) {
+          markers[name] = L.marker(pos, { icon }).addTo(map);
+        } else {
+          markers[name].setLatLng(pos);
+          markers[name].setIcon(icon);
+        }
+
+        // Popup logic
+        const timeStr = new Date(data.lastUpdated).toLocaleTimeString();
+        let popupContent = `<b>${name}</b> (${data.role})<br>Updated: ${timeStr}`;
+        
+        // If I am a catcher, and this is an active hider, give me a catch button
+        if (myRole === 'Catcher' && data.role === 'Hider' && data.status !== 'Caught') {
+          popupContent += `<br><button style="padding:5px; margin-top:5px; width:100%;" onclick="window.markCaughtByCatcher('${name}')">Mark as Caught</button>`;
+        }
+        
+        markers[name].bindPopup(popupContent);
+      }
+
+      if (bounds.length > 0) map.fitBounds(bounds, { padding: [50, 50], maxZoom: 17 });
+    }
+
+    window.markSelfCaught = () => {
+      update(ref(db, `rooms/${myRoom}/players/${myName}`), { status: 'Caught' });
+      document.getElementById('caughtBtn').style.display = 'none';
+    };
+
+    window.markCaughtByCatcher = (hiderName) => {
+      update(ref(db, `rooms/${myRoom}/players/${hiderName}`), { status: 'Caught' });
+    };
+
+    function checkWinCondition(players) {
+      let activeHiders = 0;
+      let totalHiders = 0;
+      
+      for (const data of Object.values(players)) {
+        if (data.role === 'Hider') {
+          totalHiders++;
+          if (data.status !== 'Caught') activeHiders++;
+        }
+      }
+
+      if (totalHiders > 0 && activeHiders === 0 && isHost) {
+        endGame('Catchers Win! All hiders caught.');
+      }
+    }
+
+    function endGame(message) {
+      update(ref(db, `rooms/${myRoom}`), { status: 'ended', result: message });
+    }
+
+    async function showEndScreen() {
+      switchScreen('screen-end');
+      clearInterval(locationTimer);
+      clearInterval(countdownTimer);
+      if (wakeLock) wakeLock.release();
+      
+      const snap = await get(ref(db, `rooms/${myRoom}/result`));
+      document.getElementById('winnerText').innerText = snap.val() || "Game Over";
+
+      // Cleanup room data after 5 seconds if host
+      if (isHost) {
+        setTimeout(() => {
+          remove(ref(db, `rooms/${myRoom}`));
+        }, 5000);
+      }
+    }
+
+    // --- WAKE LOCK ---
+    async function requestWakeLock() {
+      try {
+        if ('wakeLock' in navigator) {
+          wakeLock = await navigator.wakeLock.request('screen');
+        }
+      } catch (err) {
+        console.log("Wake Lock error:", err);
+      }
+    }
+  </script>
+</body>
+</html>
