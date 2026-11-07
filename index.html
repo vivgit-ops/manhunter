@@ -99,7 +99,7 @@
       gap: 8px;
     }
 
-    /* Landing Choice Cards */
+    /* Two-Button Landing Choice */
     .landing-choice {
       display: flex;
       flex-direction: column;
@@ -113,11 +113,43 @@
       padding: 20px;
       text-align: center;
       cursor: pointer;
-      transition: border-color 0.2s;
+      transition: border-color 0.2s, transform 0.1s;
     }
     .choice-card:hover { border-color: var(--primary); }
+    .choice-card:active { transform: scale(0.99); }
     .choice-card h2 { margin: 0 0 6px 0; font-size: 20px; }
     .choice-card p { margin: 0; color: var(--text-muted); font-size: 13px; }
+
+    /* Character Avatar Selector Grid */
+    .avatar-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      margin-top: 6px;
+    }
+    .avatar-option {
+      background: var(--bg);
+      border: 2px solid var(--border);
+      border-radius: 10px;
+      padding: 8px 4px;
+      text-align: center;
+      font-size: 22px;
+      cursor: pointer;
+      user-select: none;
+      transition: transform 0.1s, border-color 0.15s, background 0.15s;
+    }
+    .avatar-option span {
+      display: block;
+      font-size: 10px;
+      color: var(--text-muted);
+      margin-top: 2px;
+      font-weight: 600;
+    }
+    .avatar-option.selected {
+      border-color: var(--primary);
+      background: var(--surface-light);
+      box-shadow: 0 0 10px rgba(56, 189, 248, 0.35);
+    }
 
     #setupMap {
       width: 100%;
@@ -259,8 +291,8 @@
       font-size: 12px;
       margin-bottom: 4px;
     }
-    .chat-line { margin-bottom: 3px; }
-    .chat-line b { color: var(--primary); }
+    .chat-line { margin-bottom: 3px; word-break: break-word; }
+    .chat-sender { color: var(--primary); font-weight: 700; margin-right: 4px; }
 
     .chat-input-bar {
       display: flex;
@@ -268,6 +300,54 @@
     }
     .chat-input-bar input { margin: 0; padding: 6px 8px; font-size: 12px; }
     .chat-input-bar button { margin: 0; width: 65px; padding: 6px; font-size: 12px; }
+
+    /* MAP MARKER AVATARS & CATCHER RED LAYER */
+    @keyframes catcherPulse {
+      0% { box-shadow: 0 0 0 0 rgba(244, 63, 94, 0.85), 0 0 12px 4px rgba(244, 63, 94, 0.7); }
+      70% { box-shadow: 0 0 0 14px rgba(244, 63, 94, 0), 0 0 16px 6px rgba(244, 63, 94, 0.4); }
+      100% { box-shadow: 0 0 0 0 rgba(244, 63, 94, 0), 0 0 12px 4px rgba(244, 63, 94, 0.7); }
+    }
+
+    .player-pin {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      user-select: none;
+      position: relative;
+    }
+
+    /* Catcher Red Layer */
+    .pin-catcher {
+      background: radial-gradient(circle, rgba(244, 63, 94, 0.95) 0%, rgba(159, 18, 57, 0.95) 100%);
+      border: 3px solid #ffe4e6;
+      animation: catcherPulse 1.6s infinite;
+    }
+
+    /* Hider Cyan Layer */
+    .pin-hider {
+      background: radial-gradient(circle, #0284c7 0%, #0f1a2e 100%);
+      border: 3px solid #38bdf8;
+      box-shadow: 0 0 10px #38bdf8;
+    }
+
+    /* Out of Bounds Warning Layer */
+    .pin-exposed {
+      background: radial-gradient(circle, #f59e0b 0%, #78350f 100%);
+      border: 3px solid #fef08a;
+      box-shadow: 0 0 14px #fbbf24;
+    }
+
+    /* Caught Grey Layer */
+    .pin-caught {
+      background: #334155;
+      border: 2px solid #94a3b8;
+      opacity: 0.75;
+      filter: grayscale(80%);
+    }
   </style>
 </head>
 <body>
@@ -282,11 +362,11 @@
     <div id="home-choices" class="landing-choice">
       <div class="choice-card" onclick="showHostForm()">
         <h2>👑 Create Room</h2>
-        <p>Host a match, configure boundaries, timers, and radar settings.</p>
+        <p>Host a match, pick your character, set boundaries, timers, and radar rules.</p>
       </div>
       <div class="choice-card" onclick="showJoinForm()">
         <h2>🔗 Join Room</h2>
-        <p>Enter an existing code and jump straight into the lobby.</p>
+        <p>Pick your character, enter a room code, and jump straight into the lobby.</p>
       </div>
     </div>
 
@@ -294,17 +374,25 @@
     <div id="join-form" style="display: none;">
       <div class="card">
         <h3>🔗 Join a Match</h3>
-        <label>Your Name</label>
-        <input type="text" id="joinName" placeholder="e.g. Vivek" />
-
-        <label>Room Code</label>
-        <input type="text" id="joinRoomCode" placeholder="e.g. 7788" />
+        <div class="grid-2">
+          <div>
+            <label>Your Name</label>
+            <input type="text" id="joinName" placeholder="e.g. Vivek" />
+          </div>
+          <div>
+            <label>Room Code</label>
+            <input type="text" id="joinRoomCode" placeholder="e.g. 7788" />
+          </div>
+        </div>
 
         <label>Starting Role</label>
         <select id="joinRole">
           <option value="Hider">🏃 Hider</option>
-          <option value="Catcher">🕵️ Catcher</option>
+          <option value="Catcher">🕵️ Catcher (Red Aura)</option>
         </select>
+
+        <label>Choose Your Character</label>
+        <div id="joinAvatarGrid" class="avatar-grid"></div>
 
         <button onclick="submitJoin()">Enter Match</button>
         <button class="secondary" onclick="resetLanding()">Back</button>
@@ -329,9 +417,12 @@
 
         <label>Your Starting Role</label>
         <select id="hostRole">
-          <option value="Catcher">🕵️ Catcher</option>
+          <option value="Catcher">🕵️ Catcher (Red Aura)</option>
           <option value="Hider">🏃 Hider</option>
         </select>
+
+        <label>Choose Your Character</label>
+        <div id="hostAvatarGrid" class="avatar-grid"></div>
       </div>
 
       <div class="card">
@@ -415,6 +506,9 @@
       <div id="playersList"></div>
     </div>
     <div class="card" id="lobbySummary" style="font-size: 12px; color: var(--text-muted);"></div>
+    <div class="card" style="font-size: 11px; color: var(--warning); text-align: center;">
+      ⚠️ Stay aware of your surroundings, stay off active roads, and keep your screen on during play.
+    </div>
     <button id="startBtn" onclick="startGame()" style="display: none;">🔥 Start Game</button>
     <button class="secondary" onclick="leaveLobby()">Leave Lobby</button>
   </div>
@@ -439,6 +533,7 @@
       </div>
 
       <!-- Alerts -->
+      <div id="gpsErrorBanner" class="alert-banner alert-danger">⚠️ GPS Blocked! Enable Location Permissions in your browser settings.</div>
       <div id="headStartBanner" class="alert-banner alert-warning"></div>
       <div id="outOfBoundsBanner" class="alert-banner alert-danger">🚨 OUT OF BOUNDS! Live location exposed to enemies!</div>
       <div id="proximityBanner" class="alert-banner alert-danger">📳 PROXIMITY ALERT: Enemy within 50m!</div>
@@ -447,7 +542,7 @@
       <div class="feature-buttons">
         <button id="radarBtn" class="secondary" onclick="triggerRadarScan()" style="display:none;">📡 Radar Scan (Force Ping)</button>
         <button id="caughtBtn" class="danger" onclick="markSelfCaught()" style="display:none;">🏳️ I'm Caught</button>
-        <button id="hostEndBtn" class="danger" onclick="endGame('🛑 Match ended by host.')" style="display:none;">🛑 End Match</button>
+        <button id="hostEndBtn" class="danger" onclick="endGame('🛑 Match ended early.')" style="display:none;">🛑 End Match</button>
       </div>
 
       <!-- Quick Pings -->
@@ -495,7 +590,7 @@
     import { getDatabase, ref, set, get, push, onValue, update, remove } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
     // =========================================================
-    // --- 1. FIREBASE CONFIGURATION ---
+    // --- 1. PASTE YOUR FIREBASE CONFIGURATION HERE ---
     // =========================================================
      const firebaseConfig = {
   apiKey: "AIzaSyCrorYSjzN5rooWa4keUkPvSGNQt0tZ1sE",
@@ -514,19 +609,34 @@
     const db = getDatabase(app);
 
     // =========================================================
-    // --- 2. MASTER DEVELOPER IDENTIFICATION ---
+    // --- 2. MASTER DEVELOPER & CHARACTER ROSTER ---
     // =========================================================
     const DEV_NAME = "Vivek";
+
+    const CHARACTERS = [
+      { emoji: "🥷", name: "Ninja" },
+      { emoji: "🦊", name: "Fox" },
+      { emoji: "🐺", name: "Wolf" },
+      { emoji: "👻", name: "Ghost" },
+      { emoji: "🦁", name: "Lion" },
+      { emoji: "🤖", name: "Robot" },
+      { emoji: "🦅", name: "Eagle" },
+      { emoji: "⚡", name: "Bolt" }
+    ];
 
     // State Variables
     let myName = "";
     let myRoom = "";
     let myRole = "Hider";
+    let myAvatar = "🥷";
     let myStatus = "Active";
     let isHost = false;
     let isDev = false;
     let myLat = null;
     let myLng = null;
+
+    // Screen Wake Lock
+    let wakeLock = null;
 
     // Boundary Setup State
     let setupMap = null;
@@ -561,10 +671,56 @@
 
     const HIGH_PRECISION_GPS = { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 };
 
+    // --- SCREEN WAKE LOCK API ---
+    async function keepScreenAwake() {
+      try {
+        if ('wakeLock' in navigator) {
+          wakeLock = await navigator.wakeLock.request('screen');
+          wakeLock.addEventListener('release', () => { wakeLock = null; });
+        }
+      } catch (e) {
+        console.warn('Wake lock request skipped:', e);
+      }
+    }
+
+    document.addEventListener('visibilitychange', () => {
+      if (gameActive && document.visibilityState === 'visible' && !wakeLock) {
+        keepScreenAwake();
+      }
+    });
+
+    // --- RENDER CHARACTER GRIDS ---
+    function renderAvatarGrids() {
+      ['hostAvatarGrid', 'joinAvatarGrid'].forEach(gridId => {
+        const container = document.getElementById(gridId);
+        container.innerHTML = '';
+        CHARACTERS.forEach((char, index) => {
+          const btn = document.createElement('div');
+          btn.className = `avatar-option ${char.emoji === myAvatar ? 'selected' : ''}`;
+          btn.innerHTML = `${char.emoji}<span>${char.name}</span>`;
+          btn.onclick = () => {
+            myAvatar = char.emoji;
+            document.querySelectorAll('.avatar-option').forEach(el => el.classList.remove('selected'));
+            document.querySelectorAll('.avatar-option').forEach(el => {
+              if (el.textContent.includes(char.name)) el.classList.add('selected');
+            });
+          };
+          container.appendChild(btn);
+        });
+      });
+    }
+
     // --- REJOIN MEMORY & INIT ---
     window.addEventListener('DOMContentLoaded', async () => {
+      renderAvatarGrids();
+
       const savedName = localStorage.getItem('manhunt_name');
       const savedRoom = localStorage.getItem('manhunt_room');
+      const savedAvatar = localStorage.getItem('manhunt_avatar');
+      if (savedAvatar) {
+        myAvatar = savedAvatar;
+        renderAvatarGrids();
+      }
 
       if (savedName && savedRoom) {
         try {
@@ -577,6 +733,7 @@
               isDev = (myName.trim().toLowerCase() === DEV_NAME.toLowerCase());
               isHost = (roomVal.host === myName);
               myRole = roomVal.players[myName].role;
+              myAvatar = roomVal.players[myName].avatar || myAvatar;
               myStatus = roomVal.players[myName].status || "Active";
 
               if (roomVal.status === 'playing') {
@@ -588,18 +745,17 @@
               }
             }
           }
-        } catch (e) { console.warn("Auto rejoin failed", e); }
+        } catch (e) { console.warn("Auto rejoin skipped:", e); }
       }
     });
 
     // --- LANDING FLOW HELPERS ---
-    window.showCreateOptions = () => {
+    window.showHostForm = () => {
       document.getElementById('home-choices').style.display = 'none';
       document.getElementById('join-form').style.display = 'none';
       document.getElementById('host-form').style.display = 'block';
       setTimeout(initSetupMap, 200);
     };
-    window.showHostForm = window.showCreateOptions;
 
     window.showJoinForm = () => {
       document.getElementById('home-choices').style.display = 'none';
@@ -616,6 +772,10 @@
     function switchScreen(id) {
       document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
       document.getElementById(id).classList.add('active');
+    }
+
+    function hasInvalidFirebaseChars(str) {
+      return /[.#$\[\]\/]/.test(str);
     }
 
     // --- BOUNDARY PICKER SETUP ---
@@ -683,18 +843,33 @@
 
     // --- CREATE & JOIN ACTIONS ---
     window.submitCreate = async () => {
+      const errEl = document.getElementById('hostError');
+      errEl.innerText = "";
       myName = document.getElementById('hostName').value.trim();
       myRoom = document.getElementById('hostRoomCode').value.trim();
       myRole = document.getElementById('hostRole').value;
+
       if (!myName || !myRoom) {
-        document.getElementById('hostError').innerText = "Enter your Host Name and Room Code.";
+        errEl.innerText = "Enter both your Host Name and Room Code.";
+        return;
+      }
+      if (hasInvalidFirebaseChars(myName + myRoom)) {
+        errEl.innerText = "Names and Room Codes cannot contain . # $ [ ] /";
         return;
       }
 
-      isDev = (myName.trim().toLowerCase() === DEV_NAME.toLowerCase());
+      // Prevent overwriting an existing active room
+      const existing = await get(ref(db, `rooms/${myRoom}`));
+      if (existing.exists() && existing.val().status !== 'ended') {
+        errEl.innerText = "Room code already in use! Pick another code or use Join Room.";
+        return;
+      }
+
+      isDev = (myName.toLowerCase() === DEV_NAME.toLowerCase());
       isHost = true;
       localStorage.setItem('manhunt_name', myName);
       localStorage.setItem('manhunt_room', myRoom);
+      localStorage.setItem('manhunt_avatar', myAvatar);
 
       const bType = document.getElementById('boundaryTypeSelect').value;
       let finalBoundary = null;
@@ -724,43 +899,60 @@
       };
 
       await set(ref(db, `rooms/${myRoom}`), roomData);
-      await set(ref(db, `rooms/${myRoom}/players/${myName}`), { role: myRole, status: 'Active' });
+      await set(ref(db, `rooms/${myRoom}/players/${myName}`), {
+        role: myRole,
+        avatar: myAvatar,
+        status: 'Active'
+      });
       enterLobby();
     };
 
     window.submitJoin = async () => {
+      const errEl = document.getElementById('joinError');
+      errEl.innerText = "";
       myName = document.getElementById('joinName').value.trim();
       myRoom = document.getElementById('joinRoomCode').value.trim();
       myRole = document.getElementById('joinRole').value;
+
       if (!myName || !myRoom) {
-        document.getElementById('joinError').innerText = "Enter your Name and Room Code.";
+        errEl.innerText = "Enter both your Name and Room Code.";
+        return;
+      }
+      if (hasInvalidFirebaseChars(myName + myRoom)) {
+        errEl.innerText = "Names and Room Codes cannot contain . # $ [ ] /";
         return;
       }
 
       const snap = await get(ref(db, `rooms/${myRoom}`));
       if (!snap.exists()) {
-        document.getElementById('joinError').innerText = "Room does not exist. Check code.";
+        errEl.innerText = "Room does not exist. Check your code.";
         return;
       }
 
       const val = snap.val();
-      isDev = (myName.trim().toLowerCase() === DEV_NAME.toLowerCase());
+      isDev = (myName.toLowerCase() === DEV_NAME.toLowerCase());
       isHost = (val.host === myName);
       localStorage.setItem('manhunt_name', myName);
       localStorage.setItem('manhunt_room', myRoom);
+      localStorage.setItem('manhunt_avatar', myAvatar);
 
       if (val.status === 'playing') {
         if (val.players && val.players[myName]) {
           myRole = val.players[myName].role;
+          myAvatar = val.players[myName].avatar || myAvatar;
           myStatus = val.players[myName].status || 'Active';
           initGame();
           return;
         }
-        document.getElementById('joinError').innerText = "Game is already in progress!";
+        errEl.innerText = "Game is already in progress!";
         return;
       }
 
-      await set(ref(db, `rooms/${myRoom}/players/${myName}`), { role: myRole, status: 'Active' });
+      await set(ref(db, `rooms/${myRoom}/players/${myName}`), {
+        role: myRole,
+        avatar: myAvatar,
+        status: 'Active'
+      });
       enterLobby();
     };
 
@@ -768,7 +960,7 @@
     function enterLobby() {
       switchScreen('screen-lobby');
       document.getElementById('displayRoomCode').innerText = myRoom;
-      document.getElementById('startBtn').style.display = isHost ? 'block' : 'none';
+      document.getElementById('startBtn').style.display = (isHost || isDev) ? 'block' : 'none';
 
       onValue(ref(db, `rooms/${myRoom}`), (snap) => {
         if (!snap.exists()) return;
@@ -776,24 +968,41 @@
 
         const speedText = val.pingInterval === 0 ? "Live" : `${val.pingInterval / 60000}m`;
         const bText = !val.boundary ? "None" : (val.boundary.type === 'circle' ? `${val.boundary.radius}m Circle` : "Custom Polygon");
-        document.getElementById('lobbySummary').innerHTML =
+        document.getElementById('lobbySummary').textContent =
           `Match: ${val.durationMins}m | GPS: ${speedText} | Head-Start: ${(val.headStartMs || 0)/60000}m | Radar: ${val.radarMode} | Boundary: ${bText}`;
 
         const players = val.players || {};
         const list = document.getElementById('playersList');
         list.innerHTML = '';
+
         for (const [pName, pData] of Object.entries(players)) {
-          if (pName === myName) myRole = pData.role;
+          if (pName === myName) {
+            myRole = pData.role;
+            myAvatar = pData.avatar || myAvatar;
+          }
           const isUserDev = (pName.trim().toLowerCase() === DEV_NAME.toLowerCase());
           const row = document.createElement('div');
           row.className = 'player-row';
-          row.innerHTML = `
-            <span><b>${pName}</b> ${pName === val.host ? '👑' : ''} ${isUserDev ? '⚡(Dev)' : ''}</span>
-            <select onchange="window.changeRole('${pName}', this.value)" style="width:auto; padding:4px 8px; margin:0;" ${(isHost || pName === myName) ? '' : 'disabled'}>
-              <option value="Hider" ${pData.role === 'Hider' ? 'selected' : ''}>🏃 Hider</option>
-              <option value="Catcher" ${pData.role === 'Catcher' ? 'selected' : ''}>🕵️ Catcher</option>
-            </select>
+
+          const nameSpan = document.createElement('span');
+          const boldName = document.createElement('b');
+          boldName.textContent = `${pData.avatar || '🥷'} ${pName}`;
+          nameSpan.appendChild(boldName);
+
+          if (pName === val.host) nameSpan.appendChild(document.createTextNode(' 👑'));
+          if (isUserDev) nameSpan.appendChild(document.createTextNode(' ⚡(Dev)'));
+
+          const roleSelect = document.createElement('select');
+          roleSelect.style.cssText = "width:auto; padding:4px 8px; margin:0;";
+          roleSelect.disabled = !(isHost || isDev || pName === myName);
+          roleSelect.innerHTML = `
+            <option value="Hider" ${pData.role === 'Hider' ? 'selected' : ''}>🏃 Hider</option>
+            <option value="Catcher" ${pData.role === 'Catcher' ? 'selected' : ''}>🕵️ Catcher</option>
           `;
+          roleSelect.onchange = (e) => window.changeRole(pName, e.target.value);
+
+          row.appendChild(nameSpan);
+          row.appendChild(roleSelect);
           list.appendChild(row);
         }
 
@@ -827,6 +1036,7 @@
       if (gameActive) return;
       gameActive = true;
       switchScreen('screen-game');
+      keepScreenAwake();
 
       const snap = await get(ref(db, `rooms/${myRoom}`));
       const val = snap.val();
@@ -837,9 +1047,9 @@
       boundaryData = val.boundary || null;
 
       // HUD Badges
-      document.getElementById('roleBadge').innerText = `${myRole === 'Catcher' ? '🕵️' : '🏃'} ${myRole} ${isDev ? '⚡' : ''}`;
+      document.getElementById('roleBadge').textContent = `${myAvatar} ${myRole} ${isDev ? '⚡' : ''}`;
       document.getElementById('caughtBtn').style.display = (myRole === 'Hider' && myStatus !== 'Caught') ? 'block' : 'none';
-      document.getElementById('hostEndBtn').style.display = isHost ? 'block' : 'none';
+      document.getElementById('hostEndBtn').style.display = (isHost || isDev) ? 'block' : 'none';
 
       // Radar Scan Permissions: Developer always gets it, otherwise follows room settings
       const canUseRadar = isDev || (radarMode === 'all') || (radarMode === 'catchers' && myRole === 'Catcher');
@@ -893,14 +1103,14 @@
       });
 
       // Setup Chat Streams
-      onValue(ref(db, `rooms/${myRoom}/chat_global`), (snap) => {
-        globalChatCache = snap.val() ? Object.values(snap.val()) : [];
+      onValue(ref(db, `rooms/${myRoom}/chat_global`), (cSnap) => {
+        globalChatCache = cSnap.val() ? Object.values(cSnap.val()) : [];
         if (activeChatTab === 'global') renderChatMessages();
       });
 
       if (myRole === 'Hider' || isDev) {
-        onValue(ref(db, `rooms/${myRoom}/chat_hiders`), (snap) => {
-          hidersChatCache = snap.val() ? Object.values(snap.val()) : [];
+        onValue(ref(db, `rooms/${myRoom}/chat_hiders`), (cSnap) => {
+          hidersChatCache = cSnap.val() ? Object.values(cSnap.val()) : [];
           if (activeChatTab === 'hiders') renderChatMessages();
         });
       }
@@ -915,14 +1125,21 @@
     }
 
     // --- HIGH PRECISION GPS & GEOFENCE LOGIC ---
+    function handleGpsError(err) {
+      console.warn("GPS Error:", err);
+      if (err.code === 1) {
+        document.getElementById('gpsErrorBanner').style.display = 'block';
+      }
+    }
+
     function startGPS() {
       if (!navigator.geolocation) return;
 
       if (updateIntervalMs === 0) {
-        document.getElementById('nextUpdate').innerText = "📡 Live";
+        document.getElementById('nextUpdate').textContent = "📡 Live";
         watchId = navigator.geolocation.watchPosition(
           (pos) => handlePosition(pos, false),
-          (err) => console.warn(err),
+          handleGpsError,
           HIGH_PRECISION_GPS
         );
       } else {
@@ -937,12 +1154,13 @@
           handlePosition(pos, isRadar);
           if (!isRadar) nextPingTime = Date.now() + updateIntervalMs;
         },
-        (err) => console.warn(err),
+        handleGpsError,
         HIGH_PRECISION_GPS
       );
     }
 
     function handlePosition(pos, isRadar) {
+      document.getElementById('gpsErrorBanner').style.display = 'none';
       myLat = pos.coords.latitude;
       myLng = pos.coords.longitude;
       let outOfBounds = false;
@@ -957,11 +1175,10 @@
 
         document.getElementById('outOfBoundsBanner').style.display = outOfBounds ? 'block' : 'none';
 
-        // Continuous tracking fallback when out-of-bounds on interval mode
         if (outOfBounds && updateIntervalMs > 0 && outOfBoundsWatchId === null) {
           outOfBoundsWatchId = navigator.geolocation.watchPosition(
             (p) => handlePosition(p, true),
-            () => {},
+            handleGpsError,
             HIGH_PRECISION_GPS
           );
         } else if (!outOfBounds && outOfBoundsWatchId !== null) {
@@ -982,7 +1199,7 @@
       if (map && myLat && myLng) map.setView([myLat, myLng], 17);
     };
 
-    // --- PROXIMITY, MARKERS & HEAD-START HIDING ---
+    // --- PROXIMITY, CHARACTER PINS & CATCHER RED LAYER ---
     let initialCentered = false;
     function renderPlayersAndAlerts(players) {
       if (!map) return;
@@ -1000,15 +1217,25 @@
           if (d <= 50) dangerClose = true;
         }
 
-        // Head start: Catchers see blank map for hiders unless hider stepped out of bounds
-        if (myRole === 'Catcher' && p.role === 'Hider' && inHeadStart && !p.outOfBounds) {
+        // Head-start rule: Catchers cannot see Hiders on map unless Hider broke boundary (Dev override sees all)
+        if (myRole === 'Catcher' && !isDev && p.role === 'Hider' && inHeadStart && !p.outOfBounds) {
           if (markers[name]) { map.removeLayer(markers[name]); delete markers[name]; }
           continue;
         }
 
-        const color = p.status === 'Caught' ? '#64748b' : (p.outOfBounds ? '#fbbf24' : (p.role === 'Catcher' ? '#f43f5e' : '#38bdf8'));
-        const iconHtml = `<div style="background:${color};width:18px;height:18px;border-radius:50%;border:3px solid #fff;box-shadow:0 0 8px ${color};"></div>`;
-        const icon = L.divIcon({ html: iconHtml, className: '' });
+        // Determine Layer Style (Catcher gets Red Pulsing Layer)
+        let layerClass = 'pin-hider';
+        if (p.status === 'Caught') {
+          layerClass = 'pin-caught';
+        } else if (p.role === 'Catcher') {
+          layerClass = 'pin-catcher';
+        } else if (p.outOfBounds) {
+          layerClass = 'pin-exposed';
+        }
+
+        const charEmoji = p.avatar || '🥷';
+        const iconHtml = `<div class="player-pin ${layerClass}">${charEmoji}</div>`;
+        const icon = L.divIcon({ html: iconHtml, className: '', iconSize: [34, 34], iconAnchor: [17, 17] });
 
         if (!markers[name]) {
           markers[name] = L.marker([p.lat, p.lng], { icon }).addTo(map);
@@ -1017,12 +1244,27 @@
           markers[name].setIcon(icon);
         }
 
-        let pop = `<b>${name}</b> (${p.role})`;
-        if (p.outOfBounds) pop += `<br><b style="color:#d97706;">🚨 OUT OF BOUNDS</b>`;
-        if (myRole === 'Catcher' && p.role === 'Hider' && p.status !== 'Caught') {
-          pop += `<br><button style="margin-top:4px;padding:4px;background:#f43f5e;color:#fff;" onclick="window.catchHider('${name}')">Mark Caught</button>`;
+        const popupContainer = document.createElement('div');
+        const titleB = document.createElement('b');
+        titleB.textContent = `${charEmoji} ${name} (${p.role})`;
+        popupContainer.appendChild(titleB);
+
+        if (p.outOfBounds) {
+          const oobText = document.createElement('div');
+          oobText.style.cssText = "color:#d97706; font-weight:bold;";
+          oobText.textContent = "🚨 OUT OF BOUNDS";
+          popupContainer.appendChild(oobText);
         }
-        markers[name].bindPopup(pop);
+
+        if ((myRole === 'Catcher' || isDev) && p.role === 'Hider' && p.status !== 'Caught') {
+          const catchBtn = document.createElement('button');
+          catchBtn.style.cssText = "margin-top:4px; padding:4px 8px; background:#f43f5e; color:#fff; font-size:12px;";
+          catchBtn.textContent = "Mark Caught";
+          catchBtn.onclick = () => window.catchHider(name);
+          popupContainer.appendChild(catchBtn);
+        }
+
+        markers[name].bindPopup(popupContainer);
       }
 
       // Proximity Vibration
@@ -1048,15 +1290,18 @@
       const left = Math.max(0, Math.floor((gameEndTime - now) / 1000));
       const m = String(Math.floor(left / 60)).padStart(2, '0');
       const s = String(left % 60).padStart(2, '0');
-      document.getElementById('timeRemaining').innerText = `⏳ ${m}:${s}`;
+      document.getElementById('timeRemaining').textContent = `⏳ ${m}:${s}`;
 
-      if (left === 0 && isHost) endGame("🏃 Hiders Survived! Time expired.");
+      // Any active phone can conclude the match when time expires so host disconnects don't freeze the game
+      if (left === 0 && gameEndTime > 0) {
+        endGame("🏃 Hiders Survived! Time expired.");
+      }
 
       const hsBanner = document.getElementById('headStartBanner');
       if (now < headStartEndTime) {
         const hsSecs = Math.ceil((headStartEndTime - now) / 1000);
         hsBanner.style.display = 'block';
-        hsBanner.innerText = `🙈 HEAD-START: Hiders invisible to Catchers (${hsSecs}s)`;
+        hsBanner.textContent = `🙈 HEAD-START: Hiders invisible to Catchers (${hsSecs}s)`;
       } else {
         hsBanner.style.display = 'none';
       }
@@ -1065,20 +1310,20 @@
         const pLeft = Math.max(0, Math.floor((nextPingTime - now) / 1000));
         const pm = String(Math.floor(pLeft / 60)).padStart(2, '0');
         const ps = String(pLeft % 60).padStart(2, '0');
-        document.getElementById('nextUpdate').innerText = `📡 ${pm}:${ps}`;
+        document.getElementById('nextUpdate').textContent = `📡 ${pm}:${ps}`;
       }
     }
 
-    // --- RADAR, CHAT CHANNELS & CLEANUP ---
+    // --- RADAR, SAFE CHAT CHANNELS & CLEANUP ---
     window.triggerRadarScan = () => {
       update(ref(db, `rooms/${myRoom}`), { radarSweep: Date.now() });
       sendQuickPing("📡 RADAR SCAN TRIGGERED! Revealing all Hiders!");
       const btn = document.getElementById('radarBtn');
       btn.disabled = true;
-      btn.innerText = "📡 Recharging (60s)";
+      btn.textContent = "📡 Recharging (60s)";
       setTimeout(() => {
         btn.disabled = false;
-        btn.innerText = "📡 Radar Scan (Force Ping)";
+        btn.textContent = "📡 Radar Scan (Force Ping)";
       }, 60000);
     };
 
@@ -1093,7 +1338,6 @@
       sendQuickPing(`🎯 Marked ${target} caught!`);
     };
 
-    // Chat Channels Management
     window.switchChatChannel = (tab) => {
       activeChatTab = tab;
       document.getElementById('tabGlobal').classList.toggle('active-tab', tab === 'global');
@@ -1101,6 +1345,7 @@
       renderChatMessages();
     };
 
+    // XSS-Safe Chat Rendering
     function renderChatMessages() {
       const box = document.getElementById('chatMessages');
       box.innerHTML = '';
@@ -1108,7 +1353,16 @@
       for (const msg of list) {
         const d = document.createElement('div');
         d.className = 'chat-line';
-        d.innerHTML = `<b>${msg.sender}:</b> ${msg.text}`;
+
+        const senderSpan = document.createElement('span');
+        senderSpan.className = 'chat-sender';
+        senderSpan.textContent = `${msg.sender}:`;
+
+        const textSpan = document.createElement('span');
+        textSpan.textContent = msg.text;
+
+        d.appendChild(senderSpan);
+        d.appendChild(textSpan);
         box.appendChild(d);
       }
       box.scrollTop = box.scrollHeight;
@@ -1116,7 +1370,7 @@
 
     window.sendQuickPing = (text) => {
       const channel = (activeChatTab === 'hiders') ? 'chat_hiders' : 'chat_global';
-      push(ref(db, `rooms/${myRoom}/${channel}`), { sender: myName, text });
+      push(ref(db, `rooms/${myRoom}/${channel}`), { sender: `${myAvatar} ${myName}`, text });
     };
 
     window.sendCustomChat = () => {
@@ -1124,7 +1378,7 @@
       const text = inp.value.trim();
       if (!text) return;
       const channel = (activeChatTab === 'hiders') ? 'chat_hiders' : 'chat_global';
-      push(ref(db, `rooms/${myRoom}/${channel}`), { sender: myName, text });
+      push(ref(db, `rooms/${myRoom}/${channel}`), { sender: `${myAvatar} ${myName}`, text });
       inp.value = '';
     };
 
@@ -1137,7 +1391,7 @@
           if (p.status !== 'Caught') activeHiders++;
         }
       }
-      if (totalHiders > 0 && activeHiders === 0 && isHost) {
+      if (totalHiders > 0 && activeHiders === 0) {
         endGame("🕵️ Catchers Win! All Hiders caught.");
       }
     }
@@ -1147,19 +1401,24 @@
     };
 
     async function finishAndCleanUp(winnerMsg) {
+      gameActive = false;
+      if (wakeLock) {
+        wakeLock.release().catch(() => {});
+        wakeLock = null;
+      }
       if (locationTimer) clearInterval(locationTimer);
       if (countdownTimer) clearInterval(countdownTimer);
       if (watchId !== null) navigator.geolocation.clearWatch(watchId);
       if (outOfBoundsWatchId !== null) navigator.geolocation.clearWatch(outOfBoundsWatchId);
 
-      document.getElementById('winnerText').innerText = winnerMsg;
+      document.getElementById('winnerText').textContent = winnerMsg;
       switchScreen('screen-end');
       localStorage.removeItem('manhunt_room');
 
-      // Auto-clear room and GPS records completely from Firebase
+      // Auto-clear room and GPS records from Firebase
       setTimeout(() => {
         remove(ref(db, `rooms/${myRoom}`));
-      }, 2000);
+      }, 2500);
     }
 
     window.clearAndRestart = () => {
