@@ -301,6 +301,9 @@
     }
     .map-half.expanded { height: 74dvh; }
     #map { width: 100%; height: 100%; background: #070a10; }
+    .leaflet-tile-pane {
+  filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);
+}
 
     /* Floating Map Controls */
     .map-overlay-controls {
@@ -909,7 +912,7 @@
     ];
 
     // Dark Matter Map Tiles (Tactical OLED Look)
-    const DARK_TILES = "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png";
+   const DARK_TILES = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
     const TILE_ATTRIB = '&copy; OpenStreetMap &copy; CARTO';
 
     // Operative State
