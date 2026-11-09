@@ -592,14 +592,15 @@
     // =========================================================
     // --- 1. PASTE YOUR FIREBASE CONFIGURATION HERE ---
     // =========================================================
-     const firebaseConfig = {
-  apiKey: "AIzaSyCrorYSjzN5rooWa4keUkPvSGNQt0tZ1sE",
-  authDomain: "manhunt-1.firebaseapp.com",
-  projectId: "manhunt-1",
-  storageBucket: "manhunt-1.firebasestorage.app",
-  messagingSenderId: "444030203067",
-  appId: "1:444030203067:web:6bed8c6ebff8662d53e59e"
-};
+    const firebaseConfig = {
+      apiKey: "YOUR_API_KEY",
+      authDomain: "YOUR_PROJECT.firebaseapp.com",
+      databaseURL: "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
+      projectId: "manhunt-1",
+      storageBucket: "YOUR_PROJECT.appspot.com",
+      messagingSenderId: "YOUR_SENDER_ID",
+      appId: "YOUR_APP_ID"
+    };
 
     if (!firebaseConfig.databaseURL && firebaseConfig.projectId) {
       firebaseConfig.databaseURL = `https://${firebaseConfig.projectId}-default-rtdb.firebaseio.com`;
@@ -612,6 +613,7 @@
     // --- 2. MASTER DEVELOPER & CHARACTER ROSTER ---
     // =========================================================
     const DEV_NAME = "Vivek";
+    const DEV_PIN = "7777"; // Change this to your secret PIN
 
     const CHARACTERS = [
       { emoji: "🥷", name: "Ninja" },
@@ -865,7 +867,15 @@
         return;
       }
 
-      isDev = (myName.toLowerCase() === DEV_NAME.toLowerCase());
+      let tryingDev = (myName.toLowerCase() === DEV_NAME.toLowerCase());
+      if (tryingDev) {
+        const pin = prompt("Enter Developer PIN to authenticate:");
+        if (pin !== DEV_PIN) {
+          errEl.innerText = "Incorrect Developer PIN. Access denied.";
+          return;
+        }
+      }
+      isDev = tryingDev;
       isHost = true;
       localStorage.setItem('manhunt_name', myName);
       localStorage.setItem('manhunt_room', myRoom);
@@ -930,8 +940,28 @@
       }
 
       const val = snap.val();
-      isDev = (myName.toLowerCase() === DEV_NAME.toLowerCase());
+
+      // Prevent Name Collisions (but allow the original player to rejoin)
+      if (val.players && val.players[myName]) {
+        const savedName = localStorage.getItem('manhunt_name');
+        const savedRoom = localStorage.getItem('manhunt_room');
+        if (savedName !== myName || savedRoom !== myRoom) {
+          errEl.innerText = "Name already taken! Please pick a different name.";
+          return;
+        }
+      }
+
+      let tryingDev = (myName.toLowerCase() === DEV_NAME.toLowerCase());
+      if (tryingDev) {
+        const pin = prompt("Enter Developer PIN to authenticate:");
+        if (pin !== DEV_PIN) {
+          errEl.innerText = "Incorrect Developer PIN. Access denied.";
+          return;
+        }
+      }
+      isDev = tryingDev;
       isHost = (val.host === myName);
+      
       localStorage.setItem('manhunt_name', myName);
       localStorage.setItem('manhunt_room', myRoom);
       localStorage.setItem('manhunt_avatar', myAvatar);
