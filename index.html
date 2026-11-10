@@ -539,7 +539,8 @@
       position: absolute;
       inset: -9px;
       pointer-events: none;
-      transition: transform 0.12s linear;
+      transform-origin: 50% 50%;
+      transition: transform 0.08s linear;
     }
     .heading-cone::after {
       content: '';
@@ -727,6 +728,19 @@
             </select>
           </div>
           <div>
+            <label>Radar Sweep Cooldown</label>
+            <select id="radarCooldownSelect">
+              <option value="15000">⚡ 15 Seconds</option>
+              <option value="30000">⏱️ 30 Seconds</option>
+              <option value="60000" selected>⏱️ 1 Minute</option>
+              <option value="120000">⏱️ 2 Minutes</option>
+              <option value="180000">⏱️ 3 Minutes</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div>
             <label>Geofence Shape</label>
             <select id="boundaryTypeSelect" onchange="toggleBoundaryMode()">
               <option value="none">Unrestricted</option>
@@ -734,16 +748,15 @@
               <option value="polygon">Custom Polygon</option>
             </select>
           </div>
-        </div>
-
-        <div id="circleControls">
-          <label>Sector Radius</label>
-          <select id="circleRadiusSelect" onchange="updateSetupBoundary()">
-            <option value="100">100m Micro Sector</option>
-            <option value="250" selected>250m Standard Sector</option>
-            <option value="500">500m Wide Sector</option>
-            <option value="1000">1km Mega Sector</option>
-          </select>
+          <div id="circleControls">
+            <label>Sector Radius</label>
+            <select id="circleRadiusSelect" onchange="updateSetupBoundary()">
+              <option value="100">100m Micro Sector</option>
+              <option value="250" selected>250m Standard Sector</option>
+              <option value="500">500m Wide Sector</option>
+              <option value="1000">1km Mega Sector</option>
+            </select>
+          </div>
         </div>
 
         <div id="polygonControls" style="display: none; margin-top: 6px;">
@@ -805,7 +818,7 @@
       <div id="sonarWaveContainer"></div>
       <div id="gpsAccuracyPill" class="gps-telemetry-pill">🛰️ GPS: Locking...</div>
       <div class="map-overlay-controls">
-        <button class="map-btn" onclick="enableCompassPermission()" id="compassPermBtn" style="display:none;">🧭 Calibrate Compass</button>
+        <button class="map-btn" onclick="calibrateCompassNorth()" id="compassPermBtn" title="Face North and tap to zero out sensor skew">🧭 Align North</button>
         <button class="map-btn" onclick="toggleMapSize()" id="expandMapBtn">↕️ 75% Map</button>
         <button class="map-btn" onclick="recenterMap()">🎯 Center GPS</button>
       </div>
@@ -893,7 +906,7 @@
     // =========================================================
     // --- 1. PASTE YOUR FIREBASE CONFIGURATION HERE ---
     // =========================================================
-    const firebaseConfig = {
+      const firebaseConfig = {
   apiKey: "AIzaSyCrorYSjzN5rooWa4keUkPvSGNQt0tZ1sE",
   authDomain: "manhunt-1.firebaseapp.com",
   databaseURL: "https://manhunt-1-default-rtdb.firebaseio.com",
@@ -902,7 +915,6 @@
   messagingSenderId: "444030203067",
   appId: "1:444030203067:web:6bed8c6ebff8662d53e59e"
 };
-
 
     if (!firebaseConfig.databaseURL && firebaseConfig.projectId) {
       firebaseConfig.databaseURL = `https://${firebaseConfig.projectId}-default-rtdb.firebaseio.com`;
@@ -935,6 +947,7 @@
       },
 
       // Unpacks minified `p.t` back into standard properties on `p`
+      // Preserves live `p.heading` updates sent between interval GPS broadcasts
       hydratePlayer(p) {
         if (!p) return p;
         if (typeof p.t === 'string') {
@@ -942,14 +955,15 @@
             const [latI, lngI, vLatI, vLngI, acc, hdg, oob, shortTs] = JSON.parse(p.t);
             const now = Date.now();
             let fullTs = Math.floor(now / EPOCH_MOD) * EPOCH_MOD + shortTs;
-            if (fullTs > now + 60000) fullTs -= EPOCH_MOD; // Handle modulo wrap-around
+            if (fullTs > now + 60000) fullTs -= EPOCH_MOD;
 
             p.lat = latI / COORD_SCALE;
             p.lng = lngI / COORD_SCALE;
             p.vLat = vLatI / VEL_SCALE;
             p.vLng = vLngI / VEL_SCALE;
             p.accuracy = acc;
-            p.heading = hdg;
+            // Use live standalone `p.heading` if present; otherwise fall back to packet's `hdg`
+            p.heading = (typeof p.heading === 'number') ? p.heading : hdg;
             p.outOfBounds = oob === 1;
             p.lastUpdated = fullTs;
           } catch (e) {}
@@ -1004,7 +1018,14 @@
     let myVLng = 0;
     let lastGpsFixTime = 0;
     let myAccuracy = 999;
+
+    // Compass & Calibration State
+    let rawSensorHeading = 0;
+    let compassOffset = Number(localStorage.getItem('manhunt_compass_offset') || 23); // Default +23° corrects typical 337° left skew
     let myHeading = 0;
+    let smoothedHeadingSin = 0;
+    let smoothedHeadingCos = 1;
+    let unwrappedHeadings = {}; // Prevents 359° -> 1° full backwards spin in CSS
     let lastSyncedHeading = 0;
     let lastHeadingSyncTime = 0;
     let lastMinifiedRatioText = "";
@@ -1025,7 +1046,7 @@
     // Active Game Map & Dead Reckoning State
     let map = null;
     let markers = {};
-    let deadReckoningEntities = {}; // { [name]: { lat, lng, serverLat, serverLng, vLat, vLng, lastUpdated } }
+    let deadReckoningEntities = {};
     let drAnimationFrame = null;
     let ghostRings = {};
     let accuracyRings = {};
@@ -1036,6 +1057,7 @@
 
     // Match Rules & Timers
     let updateIntervalMs = 180000;
+    let radarCooldownMs = 60000;
     let nextPingTime = 0;
     let lastBroadcastAccuracy = 9999;
     let lastBroadcastTime = 0;
@@ -1131,7 +1153,7 @@
     }
 
     // =========================================================
-    // --- 4. WAKE LOCK & REAL-TIME COMPASS ENGINE ---
+    // --- 4. WAKE LOCK & REAL-TIME COMPASS ENGINE (FIXED) ---
     // =========================================================
     async function keepScreenAwake() {
       try {
@@ -1149,16 +1171,31 @@
     });
 
     let compassAttached = false;
-    window.enableCompassPermission = async () => {
+    let usingAbsoluteOrientation = false;
+
+    // Interactive North Calibration & iOS Permission Trigger
+    window.calibrateCompassNorth = async () => {
       if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
         try {
           const res = await DeviceOrientationEvent.requestPermission();
-          if (res === 'granted') {
+          if (res === 'granted' && !compassAttached) {
             window.addEventListener('deviceorientation', handleOrientation, true);
             compassAttached = true;
-            document.getElementById('compassPermBtn').style.display = 'none';
           }
         } catch (e) {}
+      }
+
+      // Calculate exact offset so current facing direction becomes 0° North
+      compassOffset = (360 - rawSensorHeading) % 360;
+      localStorage.setItem('manhunt_compass_offset', String(Math.round(compassOffset)));
+      myHeading = 0;
+      smoothedHeadingSin = 0;
+      smoothedHeadingCos = 1;
+      updateTelemetryPill();
+
+      const myCone = document.getElementById(`cone-${myName}`);
+      if (myCone) {
+        myCone.style.transform = `rotate(${getShortestRotation(myName, 0)}deg)`;
       }
     };
 
@@ -1169,14 +1206,11 @@
           if (res === 'granted') {
             window.addEventListener('deviceorientation', handleOrientation, true);
             compassAttached = true;
-          } else {
-            document.getElementById('compassPermBtn').style.display = 'block';
           }
-        }).catch(() => {
-          document.getElementById('compassPermBtn').style.display = 'block';
-        });
+        }).catch(() => {});
       } else {
         if ('ondeviceorientationabsolute' in window) {
+          usingAbsoluteOrientation = true;
           window.addEventListener('deviceorientationabsolute', handleOrientation, true);
         } else {
           window.addEventListener('deviceorientation', handleOrientation, true);
@@ -1185,35 +1219,55 @@
       }
     }
 
+    // Shortest-path angle unwrapping so 359° -> 1° rotates +2° instead of -358°
+    function getShortestRotation(name, targetDeg) {
+      const prev = unwrappedHeadings[name] ?? targetDeg;
+      let delta = ((targetDeg - prev + 540) % 360) - 180;
+      const next = prev + delta;
+      unwrappedHeadings[name] = next;
+      return Math.round(next);
+    }
+
     function handleOrientation(e) {
-      let compass = null;
+      // Ignore non-absolute events if absolute orientation is active
+      if (usingAbsoluteOrientation && e.type === 'deviceorientation' && !e.absolute) return;
+
+      let sensorDeg = null;
       if (typeof e.webkitCompassHeading === 'number') {
-        compass = e.webkitCompassHeading;
+        // iOS degrees clockwise from magnetic North
+        sensorDeg = e.webkitCompassHeading;
       } else if (e.alpha !== null) {
+        // Android degrees counter-clockwise -> convert to clockwise + screen orientation
         const screenAngle = (window.screen?.orientation?.angle || window.orientation || 0);
-        compass = (360 - e.alpha + screenAngle) % 360;
+        sensorDeg = (360 - e.alpha + screenAngle) % 360;
       }
 
-      if (compass !== null && !isNaN(compass)) {
-        myHeading = Math.round(compass);
+      if (sensorDeg !== null && !isNaN(sensorDeg)) {
+        rawSensorHeading = (sensorDeg + 360) % 360;
+        const correctedDeg = (rawSensorHeading + compassOffset + 360) % 360;
+
+        // Low-pass circular filter (sin/cos) to eliminate magnetometer jitter
+        const rad = correctedDeg * (Math.PI / 180);
+        smoothedHeadingSin = smoothedHeadingSin * 0.75 + Math.sin(rad) * 0.25;
+        smoothedHeadingCos = smoothedHeadingCos * 0.75 + Math.cos(rad) * 0.25;
+        const filteredDeg = ((Math.atan2(smoothedHeadingSin, smoothedHeadingCos) * (180 / Math.PI)) + 360) % 360;
+
+        myHeading = Math.round(filteredDeg) % 360;
         updateTelemetryPill();
 
-        // Immediately rotate local player's cone in the DOM at 60fps
+        // Rotate local player's cone smoothly at 60fps
         const myCone = document.getElementById(`cone-${myName}`);
         if (myCone) {
-          myCone.style.transform = `rotate(${myHeading}deg)`;
+          myCone.style.transform = `rotate(${getShortestRotation(myName, myHeading)}deg)`;
         }
 
-        // Sync minified telemetry if heading changed by >= 12 degrees (throttled every 1.8s)
+        // Sync standalone `heading` to Firebase whenever rotated >= 10 degrees (even in Interval Mode)
         const now = Date.now();
-        if (gameActive && myRoom && myName && Math.abs(myHeading - lastSyncedHeading) >= 12 && (now - lastHeadingSyncTime > 1800)) {
+        const angleDiff = Math.abs(((myHeading - lastSyncedHeading + 540) % 360) - 180);
+        if (gameActive && myRoom && myName && angleDiff >= 10 && (now - lastHeadingSyncTime > 1400)) {
           lastSyncedHeading = myHeading;
           lastHeadingSyncTime = now;
-          if (myLat !== null && myLng !== null && (updateIntervalMs === 0 || checkMyOutOfBounds())) {
-            broadcastPositionToFirebase(false);
-          } else {
-            update(ref(db, `rooms/${myRoom}/players/${myName}`), { heading: myHeading });
-          }
+          update(ref(db, `rooms/${myRoom}/players/${myName}`), { heading: myHeading });
         }
       }
     }
@@ -1489,6 +1543,7 @@
         catcherOffset: 0,
         durationMins: parseInt(document.getElementById('gameDuration').value) || 30,
         pingInterval: parseInt(document.getElementById('pingIntervalSelect').value),
+        radarCooldownMs: parseInt(document.getElementById('radarCooldownSelect').value) || 60000,
         headStartMs: parseInt(document.getElementById('headStartSelect').value),
         radarMode: document.getElementById('radarPermissionSelect').value,
         boundary: finalBoundary,
@@ -1591,9 +1646,10 @@
         document.getElementById('hostRoleControls').style.display = ((isHost || isDev) && roleMode === 'auto') ? 'block' : 'none';
 
         const speedText = val.pingInterval === 0 ? "LIVE" : `${val.pingInterval / 60000}M`;
+        const cdSec = Math.round((val.radarCooldownMs || 60000) / 1000);
         const bText = !val.boundary ? "NONE" : (val.boundary.type === 'circle' ? `${val.boundary.radius}M` : "POLYGON");
         document.getElementById('lobbySummary').textContent =
-          `${val.durationMins}M | GPS: ${speedText} | ROLES: ${roleMode.toUpperCase()} | ZONE: ${bText}`;
+          `${val.durationMins}M | GPS: ${speedText} | RADAR CD: ${cdSec}S | ZONE: ${bText}`;
 
         const players = val.players || {};
         const pNames = Object.keys(players);
@@ -1732,6 +1788,7 @@
       const val = snap.val();
       gameEndTime = val.endTime;
       updateIntervalMs = val.pingInterval ?? 180000;
+      radarCooldownMs = val.radarCooldownMs ?? 60000;
       headStartEndTime = val.headStartEndTime ?? 0;
       radarMode = val.radarMode || "catchers";
       boundaryData = val.boundary || null;
@@ -1747,8 +1804,13 @@
       document.getElementById('caughtBtn').style.display = (myRole === 'Hider' && myStatus !== 'Caught') ? 'block' : 'none';
       document.getElementById('hostEndBtn').style.display = (isHost || isDev) ? 'block' : 'none';
 
+      // Developers ALWAYS get the Sonar Sweep button regardless of role/mode
       const canUseRadar = isDev || (radarMode === 'all') || (radarMode === 'catchers' && myRole === 'Catcher');
-      document.getElementById('radarBtn').style.display = canUseRadar ? 'block' : 'none';
+      const radarBtn = document.getElementById('radarBtn');
+      radarBtn.style.display = canUseRadar ? 'block' : 'none';
+      if (isDev) {
+        radarBtn.textContent = "📡 Sonar Sweep (⚡ No CD)";
+      }
 
       if (myRole === 'Hider' || isDev) {
         document.getElementById('tabHiders').style.display = 'block';
@@ -1831,8 +1893,8 @@
     // =========================================================
     // --- 9B. DEAD RECKONING (60 FPS KINEMATIC EXTRAPOLATION) ---
     // =========================================================
-    const MAX_EXTRAPOLATION_SEC = 5.0; // Predicts forward up to 5s after a ping, then smoothly coasts to rest
-    const DR_SMOOTHING = 0.16;         // Smooth blending factor per frame
+    const MAX_EXTRAPOLATION_SEC = 5.0;
+    const DR_SMOOTHING = 0.16;
 
     function updateDeadReckoningTarget(name, p) {
       if (!deadReckoningEntities[name]) {
@@ -1849,7 +1911,6 @@
       } else {
         const ent = deadReckoningEntities[name];
         const jumpDist = calcMeters(ent.lat, ent.lng, p.lat, p.lng);
-        // Snap immediately if teleported > 1.5km; otherwise let Dead Reckoning blend smoothly
         if (jumpDist > 1500) {
           ent.lat = p.lat;
           ent.lng = p.lng;
@@ -1874,18 +1935,14 @@
           const marker = markers[name];
           if (!marker) continue;
 
-          // Elapsed seconds since the authoritative server packet was stamped
           const rawDt = Math.max(0, (now - ent.lastUpdated) / 1000);
-          // Effective extrapolation time with smooth exponential coast-down after MAX_EXTRAPOLATION_SEC
           const effectiveDt = rawDt <= MAX_EXTRAPOLATION_SEC
             ? rawDt
             : MAX_EXTRAPOLATION_SEC + (1 - Math.exp(-(rawDt - MAX_EXTRAPOLATION_SEC)));
 
-          // Predict position: P_pred = P_last + (V_last * dt)
           const predictedLat = ent.serverLat + (ent.vLat * effectiveDt);
           const predictedLng = ent.serverLng + (ent.vLng * effectiveDt);
 
-          // Blend current visual coordinates toward predicted coordinates
           ent.lat += (predictedLat - ent.lat) * DR_SMOOTHING;
           ent.lng += (predictedLng - ent.lng) * DR_SMOOTHING;
 
@@ -1911,7 +1968,6 @@
       }
     }
 
-    // Keeps GPS hardware continuously locked on satellites & computes velocity vectors (vLat, vLng)
     function startContinuousGPS() {
       if (!navigator.geolocation) return;
       if (updateIntervalMs === 0) {
@@ -1923,7 +1979,6 @@
           document.getElementById('gpsErrorBanner').style.display = 'none';
           const newAcc = pos.coords.accuracy || 999;
 
-          // Ignore sudden wild cell-tower spikes (>120m) if we already have a sharp satellite lock (<35m)
           if (myLat !== null && newAcc > 120 && myAccuracy < 35) {
             return;
           }
@@ -1932,11 +1987,11 @@
           const newLat = pos.coords.latitude;
           const newLng = pos.coords.longitude;
 
-          // Calculate velocity vector (degrees/sec) for Dead Reckoning, clamped to realistic sprint speeds (~10 m/s)
+          // Compute velocity vector (degrees/sec) for Dead Reckoning, clamped to ~10 m/s sprint
           if (myLat !== null && myLng !== null && lastGpsFixTime > 0) {
             const dtSec = (now - lastGpsFixTime) / 1000;
             if (dtSec >= 0.25 && dtSec < 15) {
-              const maxDegPerSec = 0.0001; // ~11 m/s max human sprint clamp
+              const maxDegPerSec = 0.0001;
               const rawVLat = (newLat - myLat) / dtSec;
               const rawVLng = (newLng - myLng) / dtSec;
               myVLat = Math.max(-maxDegPerSec, Math.min(maxDegPerSec, rawVLat));
@@ -1949,8 +2004,8 @@
           myAccuracy = newAcc;
           lastGpsFixTime = now;
 
-          // Use GPS course heading if running/moving fast (> 1.5 m/s) and compass isn't overriding
-          if (pos.coords.speed && pos.coords.speed > 1.5 && pos.coords.heading !== null && !isNaN(pos.coords.heading)) {
+          // Only use GPS course heading if compass hasn't attached and player is running fast
+          if (!compassAttached && pos.coords.speed && pos.coords.speed > 1.5 && pos.coords.heading !== null && !isNaN(pos.coords.heading)) {
             myHeading = Math.round(pos.coords.heading);
           }
 
@@ -2008,15 +2063,16 @@
         lastUpdated: now
       };
 
-      // Pack into a single minified payload string `t`
       const minifiedPayload = NetworkSerializer.minifyTelemetry(verboseTelemetry);
       const verboseBytes = JSON.stringify(verboseTelemetry).length;
       const savedPct = Math.round((1 - minifiedPayload.length / verboseBytes) * 100);
       lastMinifiedRatioText = `-${savedPct}%`;
       updateTelemetryPill();
 
+      // Clear standalone `heading` when broadcasting a full packet so `t` stays authoritative until next turn
       update(ref(db, `rooms/${myRoom}/players/${myName}`), {
-        t: minifiedPayload
+        t: minifiedPayload,
+        heading: null
       });
     }
 
@@ -2038,7 +2094,6 @@
       for (const [name, p] of Object.entries(players)) {
         if (!p.lat || !p.lng) continue;
 
-        // Calculate closest opposite-role operative
         if (me && me.lat && name !== myName && myStatus !== 'Caught' && p.status !== 'Caught' && myRole !== p.role) {
           const d = calcMeters(me.lat, me.lng, p.lat, p.lng);
           if (d < closestEnemyDist) closestEnemyDist = d;
@@ -2053,7 +2108,6 @@
           continue;
         }
 
-        // Pin Visual State
         let layerClass = 'pin-hider';
         if (p.status === 'Caught') {
           layerClass = 'pin-caught';
@@ -2064,23 +2118,34 @@
         }
 
         const charEmoji = p.avatar || '🥷';
-        const headingDeg = (name === myName) ? myHeading : (p.heading || 0);
+        const targetHeading = (name === myName) ? myHeading : (p.heading || 0);
+        const unwrappedDeg = getShortestRotation(name, targetHeading);
         const coneClass = p.role === 'Catcher' ? 'cone-catcher' : '';
-        const iconHtml = `
-          <div class="pin-wrapper">
-            <div id="cone-${name}" class="heading-cone ${coneClass}" style="transform: rotate(${headingDeg}deg);"></div>
-            <div class="player-pin ${layerClass}">${charEmoji}</div>
-          </div>
-        `;
-        const icon = L.divIcon({ html: iconHtml, className: '', iconSize: [38, 38], iconAnchor: [19, 19] });
 
         // Feed packet state into the 60 FPS Dead Reckoning engine
         updateDeadReckoningTarget(name, p);
 
         if (!markers[name]) {
+          const iconHtml = `
+            <div class="pin-wrapper">
+              <div id="cone-${name}" class="heading-cone ${coneClass}" style="transform: rotate(${unwrappedDeg}deg);"></div>
+              <div id="pin-${name}" class="player-pin ${layerClass}">${charEmoji}</div>
+            </div>
+          `;
+          const icon = L.divIcon({ html: iconHtml, className: '', iconSize: [38, 38], iconAnchor: [19, 19] });
           markers[name] = L.marker([p.lat, p.lng], { icon }).addTo(map);
         } else {
-          markers[name].setIcon(icon);
+          // Update existing DOM nodes directly so CSS transitions stay silky-smooth
+          const coneEl = document.getElementById(`cone-${name}`);
+          if (coneEl) {
+            coneEl.className = `heading-cone ${coneClass}`;
+            coneEl.style.transform = `rotate(${unwrappedDeg}deg)`;
+          }
+          const pinEl = document.getElementById(`pin-${name}`);
+          if (pinEl) {
+            pinEl.className = `player-pin ${layerClass}`;
+            pinEl.textContent = charEmoji;
+          }
         }
 
         // Subtle GPS Accuracy Ring for local player (or Dev)
@@ -2186,7 +2251,6 @@
         return;
       }
 
-      // Head-Start Banner
       const hsBanner = document.getElementById('headStartBanner');
       if (now < headStartEndTime) {
         const hsSecs = Math.ceil((headStartEndTime - now) / 1000);
@@ -2196,7 +2260,6 @@
         hsBanner.style.display = 'none';
       }
 
-      // Endgame Extraction Zone (Spawns in final 3 minutes)
       const extBanner = document.getElementById('extractionBanner');
       if (left <= 180 && left > 0 && extractionData && map) {
         if (!extractionLayer) {
@@ -2227,7 +2290,6 @@
         }
       }
 
-      // Next Scheduled GPS Ping Timer (if in Interval Mode)
       if (updateIntervalMs > 0) {
         if (now >= nextPingTime && myLat !== null) {
           broadcastPositionToFirebase(false);
@@ -2241,18 +2303,31 @@
     }
 
     // =========================================================
-    // --- 13. SONAR RADAR, COMMS & AUTO-CLEANUP ---
+    // --- 13. SONAR RADAR (CONFIGURABLE CD + DEV BYPASS) ---
     // =========================================================
     window.triggerRadarScan = () => {
       update(ref(db, `rooms/${myRoom}`), { radarSweep: Date.now() });
       sendQuickPing("📡 SONAR SWEEP ACTIVATED! Pinging all Hiders!");
+
+      // Developers (`Vivek` + PIN `7777`) bypass the cooldown completely
+      if (isDev) return;
+
       const btn = document.getElementById('radarBtn');
+      const totalSecs = Math.max(1, Math.round(radarCooldownMs / 1000));
+      let remaining = totalSecs;
       btn.disabled = true;
-      btn.textContent = "📡 Cooldown (60s)";
-      setTimeout(() => {
-        btn.disabled = false;
-        btn.textContent = "📡 Sonar Sweep";
-      }, 60000);
+      btn.textContent = `📡 Cooldown (${remaining}s)`;
+
+      const cdTimer = setInterval(() => {
+        remaining--;
+        if (remaining <= 0) {
+          clearInterval(cdTimer);
+          btn.disabled = false;
+          btn.textContent = "📡 Sonar Sweep";
+        } else {
+          btn.textContent = `📡 Cooldown (${remaining}s)`;
+        }
+      }, 1000);
     };
 
     window.markSelfCaught = () => {
