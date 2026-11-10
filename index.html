@@ -893,7 +893,7 @@
     // =========================================================
     // --- 1. PASTE YOUR FIREBASE CONFIGURATION HERE ---
     // =========================================================
-   const firebaseConfig = {
+    const firebaseConfig = {
   apiKey: "AIzaSyCrorYSjzN5rooWa4keUkPvSGNQt0tZ1sE",
   authDomain: "manhunt-1.firebaseapp.com",
   databaseURL: "https://manhunt-1-default-rtdb.firebaseio.com",
@@ -903,12 +903,63 @@
   appId: "1:444030203067:web:6bed8c6ebff8662d53e59e"
 };
 
+
     if (!firebaseConfig.databaseURL && firebaseConfig.projectId) {
       firebaseConfig.databaseURL = `https://${firebaseConfig.projectId}-default-rtdb.firebaseio.com`;
     }
 
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
+
+    // =========================================================
+    // --- 1B. PAYLOAD MINIFICATION SERIALIZER ---
+    // =========================================================
+    // Quantizes GPS floats & velocity vectors into a single compact array under key `t`
+    // Format: [latInt, lngInt, vLatInt, vLngInt, accInt, headingInt, oobBit, shortTimestamp]
+    const COORD_SCALE = 1e5; // ~1.1m precision
+    const VEL_SCALE = 1e6;   // Velocity in deg/sec scaled to integer
+    const EPOCH_MOD = 100000000;
+
+    const NetworkSerializer = {
+      minifyTelemetry(state) {
+        return JSON.stringify([
+          Math.round(state.lat * COORD_SCALE),
+          Math.round(state.lng * COORD_SCALE),
+          Math.round((state.vLat || 0) * VEL_SCALE),
+          Math.round((state.vLng || 0) * VEL_SCALE),
+          Math.round(state.accuracy || 99),
+          Math.round(state.heading || 0),
+          state.outOfBounds ? 1 : 0,
+          (state.lastUpdated || Date.now()) % EPOCH_MOD
+        ]);
+      },
+
+      // Unpacks minified `p.t` back into standard properties on `p`
+      hydratePlayer(p) {
+        if (!p) return p;
+        if (typeof p.t === 'string') {
+          try {
+            const [latI, lngI, vLatI, vLngI, acc, hdg, oob, shortTs] = JSON.parse(p.t);
+            const now = Date.now();
+            let fullTs = Math.floor(now / EPOCH_MOD) * EPOCH_MOD + shortTs;
+            if (fullTs > now + 60000) fullTs -= EPOCH_MOD; // Handle modulo wrap-around
+
+            p.lat = latI / COORD_SCALE;
+            p.lng = lngI / COORD_SCALE;
+            p.vLat = vLatI / VEL_SCALE;
+            p.vLng = vLngI / VEL_SCALE;
+            p.accuracy = acc;
+            p.heading = hdg;
+            p.outOfBounds = oob === 1;
+            p.lastUpdated = fullTs;
+          } catch (e) {}
+        } else {
+          p.vLat = p.vLat || 0;
+          p.vLng = p.vLng || 0;
+        }
+        return p;
+      }
+    };
 
     // =========================================================
     // --- 2. MASTER DEVELOPER LOCK & 16-CLASS ROSTER ---
@@ -949,10 +1000,14 @@
     let isDev = false;
     let myLat = null;
     let myLng = null;
+    let myVLat = 0;
+    let myVLng = 0;
+    let lastGpsFixTime = 0;
     let myAccuracy = 999;
     let myHeading = 0;
     let lastSyncedHeading = 0;
     let lastHeadingSyncTime = 0;
+    let lastMinifiedRatioText = "";
 
     // Wake Lock & Audio
     let wakeLock = null;
@@ -967,10 +1022,11 @@
     let chosenCircleCenter = { lat: 18.5204, lng: 73.8567 };
     let polygonPoints = [];
 
-    // Active Game Map State
+    // Active Game Map & Dead Reckoning State
     let map = null;
     let markers = {};
-    let markerAnimations = {};
+    let deadReckoningEntities = {}; // { [name]: { lat, lng, serverLat, serverLng, vLat, vLng, lastUpdated } }
+    let drAnimationFrame = null;
     let ghostRings = {};
     let accuracyRings = {};
     let activeBoundaryLayer = null;
@@ -1109,7 +1165,6 @@
     function initCompass() {
       if (compassAttached) return;
       if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-        // iOS 13+ requires explicit button tap if not triggered directly
         DeviceOrientationEvent.requestPermission().then(res => {
           if (res === 'granted') {
             window.addEventListener('deviceorientation', handleOrientation, true);
@@ -1133,10 +1188,8 @@
     function handleOrientation(e) {
       let compass = null;
       if (typeof e.webkitCompassHeading === 'number') {
-        // iOS degrees clockwise from magnetic North
         compass = e.webkitCompassHeading;
       } else if (e.alpha !== null) {
-        // Android degrees counter-clockwise -> convert to clockwise
         const screenAngle = (window.screen?.orientation?.angle || window.orientation || 0);
         compass = (360 - e.alpha + screenAngle) % 360;
       }
@@ -1151,12 +1204,16 @@
           myCone.style.transform = `rotate(${myHeading}deg)`;
         }
 
-        // Sync heading to Firebase if changed by >= 12 degrees (throttled every 1.8s)
+        // Sync minified telemetry if heading changed by >= 12 degrees (throttled every 1.8s)
         const now = Date.now();
         if (gameActive && myRoom && myName && Math.abs(myHeading - lastSyncedHeading) >= 12 && (now - lastHeadingSyncTime > 1800)) {
           lastSyncedHeading = myHeading;
           lastHeadingSyncTime = now;
-          update(ref(db, `rooms/${myRoom}/players/${myName}`), { heading: myHeading });
+          if (myLat !== null && myLng !== null && (updateIntervalMs === 0 || checkMyOutOfBounds())) {
+            broadcastPositionToFirebase(false);
+          } else {
+            update(ref(db, `rooms/${myRoom}/players/${myName}`), { heading: myHeading });
+          }
         }
       }
     }
@@ -1165,7 +1222,8 @@
       const pill = document.getElementById('gpsAccuracyPill');
       if (!pill) return;
       const accText = myAccuracy < 900 ? `±${Math.round(myAccuracy)}m` : 'Locking...';
-      pill.textContent = `🛰️ ${accText} | 🧭 ${myHeading}°`;
+      const minBadge = lastMinifiedRatioText ? ` | 📦 ${lastMinifiedRatioText}` : '';
+      pill.textContent = `🛰️ ${accText} | 🧭 ${myHeading}°${minBadge}`;
       pill.style.color = myAccuracy <= 20 ? 'var(--extract)' : (myAccuracy <= 50 ? 'var(--warning)' : '#ff6b8b');
     }
 
@@ -1317,7 +1375,6 @@
             updateSetupBoundary();
           }
         }
-        // Once we lock within 15m, stop setup watch
         if (acc <= 15 && setupWatchId !== null) {
           navigator.geolocation.clearWatch(setupWatchId);
           setupWatchId = null;
@@ -1383,7 +1440,6 @@
         return;
       }
 
-      // PIN-Protected Developer Verification
       let tryingDev = (myName.toLowerCase() === DEV_NAME.toLowerCase());
       if (tryingDev) {
         const pin = prompt("⚡ Developer Identity Detected. Enter Master PIN:");
@@ -1471,7 +1527,6 @@
 
       const val = snap.val();
 
-      // Block duplicate names while allowing original operative to rejoin
       if (val.players && val.players[myName]) {
         const savedName = localStorage.getItem('manhunt_name');
         const savedRoom = localStorage.getItem('manhunt_room');
@@ -1481,7 +1536,6 @@
         }
       }
 
-      // PIN-Protected Developer Verification
       let tryingDev = (myName.toLowerCase() === DEV_NAME.toLowerCase());
       if (tryingDev) {
         const pin = prompt("⚡ Developer Identity Detected. Enter Master PIN:");
@@ -1545,7 +1599,6 @@
         const pNames = Object.keys(players);
         document.getElementById('playerCountLabel').textContent = pNames.length;
 
-        // Atomic Auto-Balancer (Host maintains 1:4 ratio + catcherOffset)
         if (isHost && roleMode === 'auto' && pNames.length > 1) {
           const offset = val.catcherOffset || 0;
           const baseCatchers = Math.max(1, Math.round(pNames.length / 4));
@@ -1604,7 +1657,6 @@
 
           row.appendChild(nameSpan);
 
-          // Show dropdown ONLY in Manual mode for Host/Dev; otherwise show sleek Role Pill
           if ((isHost || isDev) && roleMode === 'manual') {
             const roleSelect = document.createElement('select');
             roleSelect.style.cssText = "width:auto; padding:5px 10px; margin:0; font-size:12px;";
@@ -1666,7 +1718,7 @@
     };
 
     // =========================================================
-    // --- 9. CORE GAME ENGINE & SMOOTH GLIDING MARKERS ---
+    // --- 9. CORE GAME ENGINE & 60 FPS DEAD RECKONING ---
     // =========================================================
     async function initGame() {
       if (gameActive) return;
@@ -1723,10 +1775,14 @@
 
       startContinuousGPS();
       countdownTimer = setInterval(updateHUD, 1000);
+      startDeadReckoningLoop();
 
-      // Real-time Operative Telemetry Listener
+      // Real-time Operative Telemetry Listener (Hydrates Minified Payloads)
       onValue(ref(db, `rooms/${myRoom}/players`), (pSnap) => {
         const players = pSnap.val() || {};
+        for (const p of Object.values(players)) {
+          NetworkSerializer.hydratePlayer(p);
+        }
         if (players[myName]) {
           myStatus = players[myName].status;
           myRole = players[myName].role;
@@ -1772,33 +1828,78 @@
       });
     }
 
-    // Smooth Gliding Interpolation for Leaflet Markers
-    function glideMarkerTo(name, marker, targetLat, targetLng) {
-      if (markerAnimations[name]) cancelAnimationFrame(markerAnimations[name]);
-      const startLatLng = marker.getLatLng();
-      const startLat = startLatLng.lat;
-      const startLng = startLatLng.lng;
-      const dist = calcMeters(startLat, startLng, targetLat, targetLng);
+    // =========================================================
+    // --- 9B. DEAD RECKONING (60 FPS KINEMATIC EXTRAPOLATION) ---
+    // =========================================================
+    const MAX_EXTRAPOLATION_SEC = 5.0; // Predicts forward up to 5s after a ping, then smoothly coasts to rest
+    const DR_SMOOTHING = 0.16;         // Smooth blending factor per frame
 
-      if (dist < 0.5 || dist > 2000) {
-        marker.setLatLng([targetLat, targetLng]);
-        return;
-      }
-
-      const duration = 450;
-      const startTime = performance.now();
-
-      function step(now) {
-        const progress = Math.min(1, (now - startTime) / duration);
-        const ease = 1 - Math.pow(1 - progress, 3);
-        const curLat = startLat + (targetLat - startLat) * ease;
-        const curLng = startLng + (targetLng - startLng) * ease;
-        marker.setLatLng([curLat, curLng]);
-        if (progress < 1) {
-          markerAnimations[name] = requestAnimationFrame(step);
+    function updateDeadReckoningTarget(name, p) {
+      if (!deadReckoningEntities[name]) {
+        deadReckoningEntities[name] = {
+          lat: p.lat,
+          lng: p.lng,
+          serverLat: p.lat,
+          serverLng: p.lng,
+          vLat: p.vLat || 0,
+          vLng: p.vLng || 0,
+          lastUpdated: p.lastUpdated || Date.now(),
+          status: p.status
+        };
+      } else {
+        const ent = deadReckoningEntities[name];
+        const jumpDist = calcMeters(ent.lat, ent.lng, p.lat, p.lng);
+        // Snap immediately if teleported > 1.5km; otherwise let Dead Reckoning blend smoothly
+        if (jumpDist > 1500) {
+          ent.lat = p.lat;
+          ent.lng = p.lng;
         }
+        ent.serverLat = p.lat;
+        ent.serverLng = p.lng;
+        ent.vLat = p.status === 'Caught' ? 0 : (p.vLat || 0);
+        ent.vLng = p.status === 'Caught' ? 0 : (p.vLng || 0);
+        ent.lastUpdated = p.lastUpdated || Date.now();
+        ent.status = p.status;
       }
-      markerAnimations[name] = requestAnimationFrame(step);
+    }
+
+    function startDeadReckoningLoop() {
+      if (drAnimationFrame) cancelAnimationFrame(drAnimationFrame);
+
+      function step() {
+        if (!gameActive) return;
+        const now = Date.now();
+
+        for (const [name, ent] of Object.entries(deadReckoningEntities)) {
+          const marker = markers[name];
+          if (!marker) continue;
+
+          // Elapsed seconds since the authoritative server packet was stamped
+          const rawDt = Math.max(0, (now - ent.lastUpdated) / 1000);
+          // Effective extrapolation time with smooth exponential coast-down after MAX_EXTRAPOLATION_SEC
+          const effectiveDt = rawDt <= MAX_EXTRAPOLATION_SEC
+            ? rawDt
+            : MAX_EXTRAPOLATION_SEC + (1 - Math.exp(-(rawDt - MAX_EXTRAPOLATION_SEC)));
+
+          // Predict position: P_pred = P_last + (V_last * dt)
+          const predictedLat = ent.serverLat + (ent.vLat * effectiveDt);
+          const predictedLng = ent.serverLng + (ent.vLng * effectiveDt);
+
+          // Blend current visual coordinates toward predicted coordinates
+          ent.lat += (predictedLat - ent.lat) * DR_SMOOTHING;
+          ent.lng += (predictedLng - ent.lng) * DR_SMOOTHING;
+
+          marker.setLatLng([ent.lat, ent.lng]);
+
+          if (accuracyRings[name]) {
+            accuracyRings[name].setLatLng([ent.lat, ent.lng]);
+          }
+        }
+
+        drAnimationFrame = requestAnimationFrame(step);
+      }
+
+      drAnimationFrame = requestAnimationFrame(step);
     }
 
     // =========================================================
@@ -1810,7 +1911,7 @@
       }
     }
 
-    // Keeps GPS hardware continuously locked on satellites to prevent 100m+ cold-start drift
+    // Keeps GPS hardware continuously locked on satellites & computes velocity vectors (vLat, vLng)
     function startContinuousGPS() {
       if (!navigator.geolocation) return;
       if (updateIntervalMs === 0) {
@@ -1827,9 +1928,26 @@
             return;
           }
 
-          myLat = pos.coords.latitude;
-          myLng = pos.coords.longitude;
+          const now = Date.now();
+          const newLat = pos.coords.latitude;
+          const newLng = pos.coords.longitude;
+
+          // Calculate velocity vector (degrees/sec) for Dead Reckoning, clamped to realistic sprint speeds (~10 m/s)
+          if (myLat !== null && myLng !== null && lastGpsFixTime > 0) {
+            const dtSec = (now - lastGpsFixTime) / 1000;
+            if (dtSec >= 0.25 && dtSec < 15) {
+              const maxDegPerSec = 0.0001; // ~11 m/s max human sprint clamp
+              const rawVLat = (newLat - myLat) / dtSec;
+              const rawVLng = (newLng - myLng) / dtSec;
+              myVLat = Math.max(-maxDegPerSec, Math.min(maxDegPerSec, rawVLat));
+              myVLng = Math.max(-maxDegPerSec, Math.min(maxDegPerSec, rawVLng));
+            }
+          }
+
+          myLat = newLat;
+          myLng = newLng;
           myAccuracy = newAcc;
+          lastGpsFixTime = now;
 
           // Use GPS course heading if running/moving fast (> 1.5 m/s) and compass isn't overriding
           if (pos.coords.speed && pos.coords.speed > 1.5 && pos.coords.heading !== null && !isNaN(pos.coords.heading)) {
@@ -1838,15 +1956,9 @@
 
           updateTelemetryPill();
 
-          const now = Date.now();
           const isOutOfBounds = checkMyOutOfBounds();
           document.getElementById('outOfBoundsBanner').style.display = isOutOfBounds ? 'block' : 'none';
 
-          // Decide whether to broadcast to Firebase right now:
-          // 1. Live mode (throttled to every 1.2s)
-          // 2. Out of Bounds (exposes live telemetry immediately)
-          // 3. Scheduled Interval timer reached
-          // 4. "Best-Fix Upgrade": If our previous broadcast had poor accuracy (e.g. >45m) and satellite lock just sharpened significantly
           const significantAccuracyUpgrade = (myAccuracy < lastBroadcastAccuracy * 0.6) && (lastBroadcastAccuracy > 25);
 
           if (updateIntervalMs === 0 || isOutOfBounds) {
@@ -1885,13 +1997,26 @@
       lastBroadcastAccuracy = myAccuracy;
       const outOfBounds = checkMyOutOfBounds();
 
-      update(ref(db, `rooms/${myRoom}/players/${myName}`), {
+      const verboseTelemetry = {
         lat: myLat,
         lng: myLng,
+        vLat: myVLat,
+        vLng: myVLng,
         accuracy: Math.round(myAccuracy),
         heading: myHeading,
         outOfBounds: outOfBounds,
         lastUpdated: now
+      };
+
+      // Pack into a single minified payload string `t`
+      const minifiedPayload = NetworkSerializer.minifyTelemetry(verboseTelemetry);
+      const verboseBytes = JSON.stringify(verboseTelemetry).length;
+      const savedPct = Math.round((1 - minifiedPayload.length / verboseBytes) * 100);
+      lastMinifiedRatioText = `-${savedPct}%`;
+      updateTelemetryPill();
+
+      update(ref(db, `rooms/${myRoom}/players/${myName}`), {
+        t: minifiedPayload
       });
     }
 
@@ -1922,6 +2047,7 @@
         // Head-Start Stealth Rule
         if (myRole === 'Catcher' && !isDev && p.role === 'Hider' && inHeadStart && !p.outOfBounds) {
           if (markers[name]) { map.removeLayer(markers[name]); delete markers[name]; }
+          if (deadReckoningEntities[name]) { delete deadReckoningEntities[name]; }
           if (ghostRings[name]) { map.removeLayer(ghostRings[name]); delete ghostRings[name]; }
           if (accuracyRings[name]) { map.removeLayer(accuracyRings[name]); delete accuracyRings[name]; }
           continue;
@@ -1948,10 +2074,12 @@
         `;
         const icon = L.divIcon({ html: iconHtml, className: '', iconSize: [38, 38], iconAnchor: [19, 19] });
 
+        // Feed packet state into the 60 FPS Dead Reckoning engine
+        updateDeadReckoningTarget(name, p);
+
         if (!markers[name]) {
           markers[name] = L.marker([p.lat, p.lng], { icon }).addTo(map);
         } else {
-          glideMarkerTo(name, markers[name], p.lat, p.lng);
           markers[name].setIcon(icon);
         }
 
@@ -1962,7 +2090,6 @@
               color: '#ffffff', fillColor: '#ffffff', fillOpacity: 0.04, weight: 1, radius: p.accuracy
             }).addTo(map);
           } else {
-            accuracyRings[name].setLatLng([p.lat, p.lng]);
             accuracyRings[name].setRadius(p.accuracy);
           }
         }
@@ -2129,6 +2256,8 @@
     };
 
     window.markSelfCaught = () => {
+      myVLat = 0;
+      myVLng = 0;
       update(ref(db, `rooms/${myRoom}/players/${myName}`), { status: 'Caught', outOfBounds: false });
       document.getElementById('caughtBtn').style.display = 'none';
       sendQuickPing("🏳️ Operative captured!");
@@ -2202,6 +2331,7 @@
 
     async function finishAndCleanUp(winnerMsg) {
       gameActive = false;
+      if (drAnimationFrame) cancelAnimationFrame(drAnimationFrame);
       document.getElementById('proximityVignette').classList.remove('vignette-active');
 
       if (wakeLock) {
