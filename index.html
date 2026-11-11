@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -13,29 +13,64 @@
   <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 
-  <!-- [FEATURE] QR Code Scanner CDNs -->
+  <!-- QR Code Generator & Scanner CDNs -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
 
   <style>
-    :root {
-      --bg: #050811;
-      --bg-gradient: radial-gradient(circle at 50% 0%, #0f1c36 0%, #050811 70%);
-      --surface: rgba(13, 21, 38, 0.78);
-      --surface-solid: #0d1526;
-      --surface-light: rgba(25, 41, 72, 0.65);
+    /* ==========================================
+       1. GLASSY THEME TOKENS (DARK & LIGHT MODE)
+       ========================================== */
+    :root, [data-theme="dark"] {
+      --bg: #060907;
+      --bg-gradient: 
+        radial-gradient(circle at 50% -10%, rgba(163, 255, 0, 0.16) 0%, transparent 55%),
+        radial-gradient(circle at 85% 90%, rgba(163, 255, 0, 0.08) 0%, transparent 45%),
+        #060907;
+      --surface: rgba(16, 22, 18, 0.62);
+      --surface-elevated: rgba(24, 34, 27, 0.75);
+      --surface-input: rgba(8, 12, 9, 0.78);
       --border: rgba(255, 255, 255, 0.09);
-      --border-bright: rgba(0, 240, 255, 0.35);
-      --primary: #00f0ff;
-      --primary-dark: #0099ff;
-      --catcher: #ff1e56;
+      --border-bright: rgba(163, 255, 0, 0.45);
+      --primary: #a3ff00;
+      --primary-hover: #b8ff33;
+      --primary-text: #050806;
+      --primary-glow: rgba(163, 255, 0, 0.28);
+      --catcher: #ff2a5f;
       --catcher-dark: #b80d38;
       --warning: #ffb800;
-      --extract: #00ff87;
-      --text: #f8fafc;
-      --text-muted: #8b9bb4;
+      --extract: #00ff9d;
+      --text: #f4f7f4;
+      --text-muted: #8e9f94;
+      --card-shadow: 0 12px 36px rgba(0, 0, 0, 0.55);
+      --map-filter: invert(100%) hue-rotate(130deg) brightness(92%) contrast(92%);
       --font-ui: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
       --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    [data-theme="light"] {
+      --bg: #f2f7f3;
+      --bg-gradient: 
+        radial-gradient(circle at 50% -10%, rgba(132, 204, 22, 0.25) 0%, transparent 55%),
+        radial-gradient(circle at 15% 90%, rgba(16, 185, 129, 0.14) 0%, transparent 45%),
+        #f2f7f3;
+      --surface: rgba(255, 255, 255, 0.68);
+      --surface-elevated: rgba(255, 255, 255, 0.88);
+      --surface-input: rgba(255, 255, 255, 0.9);
+      --border: rgba(15, 45, 25, 0.11);
+      --border-bright: rgba(101, 163, 13, 0.55);
+      --primary: #84cc16;
+      --primary-hover: #65a30d;
+      --primary-text: #061108;
+      --primary-glow: rgba(132, 204, 22, 0.32);
+      --catcher: #e11d48;
+      --catcher-dark: #9f1239;
+      --warning: #d97706;
+      --extract: #059669;
+      --text: #0a140d;
+      --text-muted: #4b6353;
+      --card-shadow: 0 10px 30px rgba(15, 40, 22, 0.08);
+      --map-filter: contrast(98%) brightness(100%);
     }
 
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -51,6 +86,40 @@
       overflow: hidden;
       display: flex;
       flex-direction: column;
+      transition: background 0.25s ease, color 0.25s ease;
+    }
+
+    /* TOP FLOATING UTILITY BAR (THEME & DEV GOD MODE) */
+    .top-utility-bar {
+      position: fixed;
+      top: 10px;
+      right: 12px;
+      z-index: 2500;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .icon-pill-btn {
+      width: auto;
+      margin: 0;
+      padding: 7px 11px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-family: var(--font-mono);
+      font-weight: 800;
+      background: var(--surface-elevated);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      color: var(--text);
+      border: 1px solid var(--border);
+      box-shadow: var(--card-shadow);
+      cursor: pointer;
+    }
+    .icon-pill-btn.god-active {
+      background: var(--primary);
+      color: var(--primary-text);
+      border-color: var(--primary);
+      box-shadow: 0 0 18px var(--primary-glow);
     }
 
     /* PROXIMITY SCREEN VIGNETTE OVERLAY */
@@ -61,7 +130,7 @@
       z-index: 9999;
       opacity: 0;
       transition: opacity 0.3s ease;
-      box-shadow: inset 0 0 65px 22px rgba(255, 30, 86, 0.85);
+      box-shadow: inset 0 0 65px 22px rgba(255, 42, 95, 0.85);
     }
     @keyframes vignettePulseFast {
       0%, 100% { opacity: 0.35; }
@@ -85,26 +154,25 @@
     /* TYPOGRAPHY & HEADERS */
     .brand-header {
       text-align: center;
-      margin: 8px 0 18px 0;
+      margin: 14px 0 18px 0;
     }
     .brand-title {
-      font-size: 26px;
+      font-size: 27px;
       font-weight: 800;
-      letter-spacing: -0.5px;
+      letter-spacing: -0.6px;
       margin: 0;
-      background: linear-gradient(90deg, #ffffff, var(--primary));
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      text-transform: uppercase;
+      color: var(--text);
+    }
+    .brand-title span {
+      color: var(--primary);
     }
     .brand-sub {
       font-family: var(--font-mono);
       font-size: 11px;
-      color: var(--primary);
+      color: var(--text-muted);
       letter-spacing: 2px;
       text-transform: uppercase;
-      opacity: 0.85;
-      margin-top: 2px;
+      margin-top: 3px;
     }
 
     h2, h3 {
@@ -113,7 +181,7 @@
       letter-spacing: -0.3px;
       color: var(--text);
     }
-    h3 { font-size: 15px; color: var(--primary); text-transform: uppercase; letter-spacing: 0.8px; }
+    h3 { font-size: 14px; color: var(--primary); text-transform: uppercase; letter-spacing: 0.8px; }
 
     label {
       font-size: 11px;
@@ -130,55 +198,56 @@
       width: 100%;
       padding: 11px 13px;
       margin-top: 5px;
-      border-radius: 10px;
+      border-radius: 12px;
       border: 1px solid var(--border);
       font-family: var(--font-ui);
       font-size: 14px;
-      background-color: rgba(6, 10, 20, 0.85);
+      background-color: var(--surface-input);
       color: var(--text);
-      transition: all 0.18s ease;
+      transition: all 0.2s ease;
     }
     input:focus, select:focus {
       outline: none;
       border-color: var(--primary);
-      box-shadow: 0 0 0 3px rgba(0, 240, 255, 0.15);
+      box-shadow: 0 0 0 3px var(--primary-glow);
     }
 
     button {
-      background: linear-gradient(135deg, var(--primary), var(--primary-dark));
-      color: #02060d;
+      background: var(--primary);
+      color: var(--primary-text);
       font-weight: 800;
       border: none;
       cursor: pointer;
       margin-top: 10px;
-      letter-spacing: 0.3px;
-      box-shadow: 0 4px 15px rgba(0, 240, 255, 0.25);
+      letter-spacing: 0.2px;
+      box-shadow: 0 6px 20px var(--primary-glow);
     }
+    button:hover { background: var(--primary-hover); }
     button:active { transform: scale(0.97); }
     button:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
 
     button.secondary {
-      background: var(--surface-light);
-      color: var(--primary);
+      background: var(--surface-elevated);
+      color: var(--text);
       border: 1px solid var(--border-bright);
       box-shadow: none;
     }
     button.danger {
       background: linear-gradient(135deg, var(--catcher), var(--catcher-dark));
       color: #fff;
-      box-shadow: 0 4px 15px rgba(255, 30, 86, 0.3);
+      box-shadow: 0 4px 15px rgba(255, 42, 95, 0.3);
     }
 
     /* GLASSMORPHISM CARDS */
     .card {
       background: var(--surface);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
+      backdrop-filter: blur(22px);
+      -webkit-backdrop-filter: blur(22px);
       border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 14px;
+      border-radius: 20px;
+      padding: 16px;
       margin-bottom: 12px;
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+      box-shadow: var(--card-shadow);
     }
 
     .grid-2 {
@@ -187,7 +256,7 @@
       gap: 10px;
     }
 
-    /* LANDING CARDS */
+    /* LANDING CARDS (INSPIRED BY CRYPTO FINTECH REFERENCE) */
     .landing-choice {
       display: flex;
       flex-direction: column;
@@ -196,23 +265,43 @@
     }
     .choice-card {
       background: var(--surface);
-      backdrop-filter: blur(16px);
+      backdrop-filter: blur(22px);
+      -webkit-backdrop-filter: blur(22px);
       border: 1px solid var(--border);
-      border-radius: 18px;
-      padding: 22px 18px;
-      text-align: center;
+      border-radius: 22px;
+      padding: 24px 18px;
+      text-align: left;
       cursor: pointer;
       position: relative;
       overflow: hidden;
-      transition: transform 0.15s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+      box-shadow: var(--card-shadow);
+      transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+    .choice-card.featured {
+      background: var(--primary);
+      color: var(--primary-text);
+      border-color: var(--primary);
+      box-shadow: 0 12px 32px var(--primary-glow);
+    }
+    .choice-card.featured h2,
+    .choice-card.featured p,
+    .choice-card.featured .step-num {
+      color: var(--primary-text);
     }
     .choice-card:hover, .choice-card:active {
       border-color: var(--primary);
-      box-shadow: 0 0 25px rgba(0, 240, 255, 0.18);
       transform: translateY(-2px);
     }
-    .choice-card h2 { margin: 0 0 6px 0; font-size: 20px; color: var(--primary); }
-    .choice-card p { margin: 0; color: var(--text-muted); font-size: 13px; line-height: 1.4; }
+    .step-num {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-weight: 800;
+      color: var(--primary);
+      margin-bottom: 6px;
+      display: block;
+    }
+    .choice-card h2 { margin: 0 0 6px 0; font-size: 20px; }
+    .choice-card p { margin: 0; color: var(--text-muted); font-size: 13px; line-height: 1.45; }
 
     /* 16-CHARACTER AVATAR GRID */
     .avatar-grid {
@@ -220,14 +309,14 @@
       grid-template-columns: repeat(4, 1fr);
       gap: 8px;
       margin-top: 6px;
-      max-height: 210px;
+      max-height: 200px;
       overflow-y: auto;
       padding: 2px;
     }
     .avatar-option {
-      background: rgba(6, 10, 20, 0.75);
+      background: var(--surface-input);
       border: 1px solid var(--border);
-      border-radius: 12px;
+      border-radius: 14px;
       padding: 8px 4px;
       text-align: center;
       font-size: 22px;
@@ -244,16 +333,16 @@
     }
     .avatar-option.selected {
       border-color: var(--primary);
-      background: rgba(0, 240, 255, 0.12);
-      box-shadow: 0 0 14px rgba(0, 240, 255, 0.3);
+      background: var(--primary-glow);
+      box-shadow: 0 0 14px var(--primary-glow);
       transform: scale(1.03);
     }
-    .avatar-option.selected span { color: var(--primary); }
+    .avatar-option.selected span { color: var(--text); }
 
     #setupMap {
       width: 100%;
       height: 190px;
-      border-radius: 12px;
+      border-radius: 14px;
       border: 1px solid var(--border-bright);
       margin-top: 8px;
       background: #080b12;
@@ -274,18 +363,18 @@
       font-family: var(--font-mono);
       font-size: 11px;
       font-weight: 700;
-      padding: 4px 9px;
+      padding: 4px 10px;
       border-radius: 999px;
       text-transform: uppercase;
     }
     .pill-catcher {
-      background: rgba(255, 30, 86, 0.18);
+      background: rgba(255, 42, 95, 0.16);
       color: var(--catcher);
       border: 1px solid var(--catcher);
     }
     .pill-hider {
-      background: rgba(0, 240, 255, 0.14);
-      color: var(--primary);
+      background: var(--primary-glow);
+      color: var(--text);
       border: 1px solid var(--primary);
     }
 
@@ -304,11 +393,10 @@
       transition: height 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
     }
     .map-half.expanded { height: 74dvh; }
-    #map { width: 100%; height: 100%; background: #070a10; }
+    #map { width: 100%; height: 100%; background: #070a08; }
 
-    /* Keyless Dark-Mode Map Filter (Applies to OpenStreetMap Tiles) */
     .leaflet-tile-pane {
-      filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);
+      filter: var(--map-filter);
     }
 
     /* Floating Map Controls */
@@ -326,12 +414,13 @@
       padding: 7px 11px;
       font-size: 11px;
       font-family: var(--font-mono);
-      background: rgba(8, 13, 25, 0.88);
-      backdrop-filter: blur(10px);
-      color: var(--primary);
+      background: var(--surface-elevated);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      color: var(--text);
       border: 1px solid var(--border-bright);
-      border-radius: 8px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+      border-radius: 10px;
+      box-shadow: var(--card-shadow);
     }
 
     /* Top-Left GPS Accuracy & Compass Pill */
@@ -340,24 +429,26 @@
       top: 10px;
       left: 10px;
       z-index: 1000;
-      padding: 5px 10px;
+      padding: 6px 11px;
       font-size: 11px;
       font-family: var(--font-mono);
       font-weight: 700;
-      background: rgba(8, 13, 25, 0.85);
-      backdrop-filter: blur(8px);
-      color: var(--text-muted);
+      background: var(--surface-elevated);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      color: var(--text);
       border: 1px solid var(--border);
-      border-radius: 8px;
+      border-radius: 999px;
       pointer-events: none;
+      box-shadow: var(--card-shadow);
     }
 
     /* Interactive Split Handle */
     .split-divider {
       height: 18px;
       width: 100%;
-      background: #091120;
-      border-top: 1px solid var(--primary);
+      background: var(--surface-elevated);
+      border-top: 1px solid var(--border-bright);
       border-bottom: 1px solid var(--border);
       display: flex;
       align-items: center;
@@ -394,9 +485,10 @@
       align-items: center;
       gap: 6px;
       background: var(--surface);
+      backdrop-filter: blur(16px);
       border: 1px solid var(--border);
       padding: 6px 10px;
-      border-radius: 10px;
+      border-radius: 12px;
       font-family: var(--font-mono);
       font-size: 12px;
       font-weight: 700;
@@ -407,10 +499,10 @@
       margin: 0;
       padding: 4px 8px;
       font-size: 13px;
-      background: var(--surface-light);
+      background: var(--surface-elevated);
       color: var(--text);
       border: 1px solid var(--border);
-      border-radius: 6px;
+      border-radius: 8px;
       box-shadow: none;
     }
 
@@ -418,22 +510,23 @@
     .alert-banner {
       display: none;
       padding: 6px 10px;
-      border-radius: 8px;
+      border-radius: 10px;
       font-family: var(--font-mono);
       font-size: 11px;
       font-weight: 700;
       text-align: center;
       letter-spacing: 0.3px;
     }
-    .alert-warning { background: rgba(255, 184, 0, 0.2); color: var(--warning); border: 1px solid var(--warning); }
-    .alert-danger { background: rgba(255, 30, 86, 0.25); color: #ff6b8b; border: 1px solid var(--catcher); }
-    .alert-extract { background: rgba(0, 255, 135, 0.18); color: var(--extract); border: 1px solid var(--extract); }
+    .alert-warning { background: rgba(255, 184, 0, 0.18); color: var(--warning); border: 1px solid var(--warning); }
+    .alert-danger { background: rgba(255, 42, 95, 0.22); color: var(--catcher); border: 1px solid var(--catcher); }
+    .alert-extract { background: var(--primary-glow); color: var(--text); border: 1px solid var(--primary); }
 
     .feature-buttons {
       display: flex;
       gap: 6px;
+      flex-wrap: wrap;
     }
-    .feature-buttons button { margin: 0; padding: 8px; font-size: 12px; }
+    .feature-buttons button { flex: 1; min-width: 110px; margin: 0; padding: 8px; font-size: 12px; }
 
     .quick-pings {
       display: flex;
@@ -446,10 +539,10 @@
       width: auto;
       white-space: nowrap;
       margin: 0;
-      padding: 5px 9px;
+      padding: 5px 10px;
       font-size: 11px;
-      background: var(--surface-light);
-      color: var(--primary);
+      background: var(--surface);
+      color: var(--text);
       border: 1px solid var(--border);
       box-shadow: none;
     }
@@ -463,14 +556,14 @@
       margin: 0;
       padding: 5px 8px;
       font-size: 11px;
-      background: var(--surface-light);
+      background: var(--surface);
       color: var(--text-muted);
       border: 1px solid var(--border);
       box-shadow: none;
     }
     .chat-channel-tabs button.active-tab {
-      background: rgba(0, 240, 255, 0.18);
-      color: var(--primary);
+      background: var(--primary-glow);
+      color: var(--text);
       border-color: var(--primary);
       font-weight: 800;
     }
@@ -480,8 +573,9 @@
       display: flex;
       flex-direction: column;
       background: var(--surface);
+      backdrop-filter: blur(16px);
       border: 1px solid var(--border);
-      border-radius: 10px;
+      border-radius: 12px;
       padding: 6px 8px;
       min-height: 85px;
     }
@@ -502,12 +596,51 @@
     .chat-input-bar button { margin: 0; width: 68px; padding: 6px; font-size: 12px; }
 
     /* ==========================================
+       DEVELOPER GOD MODE OVERLAY DRAWER
+       ========================================== */
+    #godModeDrawer {
+      position: fixed;
+      inset: 52px 12px auto 12px;
+      max-height: 80dvh;
+      z-index: 2400;
+      display: none;
+      flex-direction: column;
+      background: var(--surface-elevated);
+      backdrop-filter: blur(26px);
+      -webkit-backdrop-filter: blur(26px);
+      border: 1.5px solid var(--primary);
+      border-radius: 20px;
+      padding: 14px;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.75);
+      overflow-y: auto;
+    }
+    .god-telemetry-card {
+      background: var(--surface-input);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 9px 10px;
+      margin-bottom: 8px;
+      font-size: 12px;
+    }
+    .god-telemetry-actions {
+      display: flex;
+      gap: 5px;
+      margin-top: 6px;
+    }
+    .god-telemetry-actions button {
+      margin: 0;
+      padding: 4px 7px;
+      font-size: 10px;
+      border-radius: 7px;
+    }
+
+    /* ==========================================
        TACTICAL MAP MARKERS, HEADING & SONAR WAVE
        ========================================== */
     @keyframes catcherPulse {
-      0% { box-shadow: 0 0 0 0 rgba(255, 30, 86, 0.9), 0 0 14px 4px rgba(255, 30, 86, 0.75); }
-      70% { box-shadow: 0 0 0 16px rgba(255, 30, 86, 0), 0 0 18px 6px rgba(255, 30, 86, 0.35); }
-      100% { box-shadow: 0 0 0 0 rgba(255, 30, 86, 0), 0 0 14px 4px rgba(255, 30, 86, 0.75); }
+      0% { box-shadow: 0 0 0 0 rgba(255, 42, 95, 0.9), 0 0 14px 4px rgba(255, 42, 95, 0.75); }
+      70% { box-shadow: 0 0 0 16px rgba(255, 42, 95, 0), 0 0 18px 6px rgba(255, 42, 95, 0.35); }
+      100% { box-shadow: 0 0 0 0 rgba(255, 42, 95, 0), 0 0 14px 4px rgba(255, 42, 95, 0.75); }
     }
 
     @keyframes sonarExpand {
@@ -523,7 +656,7 @@
       height: 240px;
       border-radius: 50%;
       border: 3px solid var(--primary);
-      background: radial-gradient(circle, rgba(0,240,255,0.22) 0%, rgba(0,240,255,0) 70%);
+      background: radial-gradient(circle, var(--primary-glow) 0%, transparent 70%);
       pointer-events: none;
       z-index: 950;
       animation: sonarExpand 2.1s cubic-bezier(0.1, 0.8, 0.3, 1) forwards;
@@ -538,7 +671,6 @@
       justify-content: center;
     }
 
-    /* Directional Heading Cone */
     .heading-cone {
       position: absolute;
       inset: -9px;
@@ -578,15 +710,15 @@
     }
 
     .pin-catcher {
-      background: radial-gradient(circle, #ff1e56 0%, #7a0924 100%);
+      background: radial-gradient(circle, #ff2a5f 0%, #7a0924 100%);
       border: 2.5px solid #ffd1dc;
       animation: catcherPulse 1.5s infinite;
     }
 
     .pin-hider {
-      background: radial-gradient(circle, #0077b6 0%, #050811 100%);
+      background: radial-gradient(circle, #1e3a1a 0%, #060907 100%);
       border: 2.5px solid var(--primary);
-      box-shadow: 0 0 12px rgba(0, 240, 255, 0.8);
+      box-shadow: 0 0 12px var(--primary-glow);
     }
 
     .pin-exposed {
@@ -602,19 +734,54 @@
       filter: grayscale(90%);
     }
 
-    /* Dark Leaflet Popup Override */
     .leaflet-popup-content-wrapper {
-      background: rgba(10, 16, 30, 0.94);
-      backdrop-filter: blur(12px);
+      background: var(--surface-elevated);
+      backdrop-filter: blur(16px);
       color: var(--text);
       border: 1px solid var(--border-bright);
-      border-radius: 12px;
+      border-radius: 14px;
       font-family: var(--font-ui);
     }
-    .leaflet-popup-tip { background: rgba(10, 16, 30, 0.94); }
+    .leaflet-popup-tip { background: var(--surface-elevated); }
   </style>
 </head>
 <body>
+
+  <!-- TOP FLOATING BAR: THEME TOGGLE & DEVELOPER GOD MODE -->
+  <div class="top-utility-bar">
+    <button id="godModeBtn" class="icon-pill-btn" onclick="toggleGodModeDrawer()" style="display: none;">👁️ GOD MODE</button>
+    <button id="devUnlockBtn" class="icon-pill-btn" onclick="unlockDevAnywhere()" title="Developer Auth">⚡</button>
+    <button id="themeToggleBtn" class="icon-pill-btn" onclick="toggleTheme()" title="Switch Light/Dark Mode">☀️</button>
+  </div>
+
+  <!-- DEVELOPER GOD MODE TELEMETRY DRAWER -->
+  <div id="godModeDrawer">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+      <h3 style="margin:0;">⚡ Omniscient God Mode</h3>
+      <button class="secondary" style="width:auto; margin:0; padding:4px 10px; font-size:11px;" onclick="toggleGodModeDrawer()">Close</button>
+    </div>
+    <p style="margin:0 0 10px 0; font-size:11px; color:var(--text-muted); font-family:var(--font-mono);">
+      Full satellite override active. Head-start blindness bypassed.
+    </p>
+
+    <!-- Global Room Selector (Works even from Home Screen) -->
+    <div style="margin-bottom: 10px;">
+      <label style="margin-top:0;">Inspect Active Server Room</label>
+      <div style="display:flex; gap:6px;">
+        <select id="godRoomSelect" onchange="switchGodRoom(this.value)" style="margin:0; flex:1;"></select>
+        <button class="secondary" style="width:auto; margin:0; padding:6px 10px; font-size:11px;" onclick="refreshGodRooms()">🔄</button>
+      </div>
+    </div>
+
+    <!-- Match Override Controls -->
+    <div class="grid-2" style="margin-bottom: 10px;">
+      <button class="secondary" style="margin:0; padding:7px; font-size:11px;" onclick="godForceRadar()">📡 Force Radar Ping</button>
+      <button class="secondary" style="margin:0; padding:7px; font-size:11px;" onclick="godAddTime(5)">⏱️ +5 Mins Clock</button>
+    </div>
+
+    <label>Live Operative Telemetry</label>
+    <div id="godTelemetryList" style="margin-top:6px;"></div>
+  </div>
 
   <!-- Dynamic Red Proximity Vignette -->
   <div id="proximityVignette"></div>
@@ -624,19 +791,21 @@
        ========================================== -->
   <div id="screen-home" class="screen active">
     <div class="brand-header">
-      <h1 class="brand-title">⚡ Manhunt Live</h1>
+      <h1 class="brand-title">⚡ Manhunt <span>Live</span></h1>
       <div class="brand-sub">Tactical GPS Pursuit Engine</div>
     </div>
 
     <!-- 1A: Landing Choice -->
     <div id="home-choices" class="landing-choice">
-      <div class="choice-card" onclick="showHostForm()">
+      <div class="choice-card featured" onclick="showHostForm()">
+        <span class="step-num">01. COMMANDER</span>
         <h2>👑 Create Tactical Room</h2>
-        <p>Configure boundaries, update intervals, auto/manual role ratios, and launch a match.</p>
+        <p>Configure game modes (Infection, Shrinking Zone), boundaries, and launch a match.</p>
       </div>
       <div class="choice-card" onclick="showJoinForm()">
+        <span class="step-num">02. OPERATIVE</span>
         <h2>🔗 Join Active Room</h2>
-        <p>Pick your operative avatar, enter a room code, and deploy into the lobby.</p>
+        <p>Pick your operative class, enter a sector room code, and deploy into the field.</p>
       </div>
     </div>
 
@@ -658,7 +827,7 @@
         <label>Select Operative Avatar (16 Classes)</label>
         <div id="joinAvatarGrid" class="avatar-grid"></div>
 
-        <button onclick="submitJoin()">Deploy Into Lobby</button>
+        <button onclick="submitJoin()">Deploy Into Lobby →</button>
         <button class="secondary" onclick="resetLanding()">Back</button>
         <div id="joinError" style="color: var(--catcher); text-align: center; font-size: 12px; font-weight: 700; margin-top: 8px;"></div>
       </div>
@@ -684,7 +853,16 @@
       </div>
 
       <div class="card">
-        <h3>⚙️ Match Parameters</h3>
+        <h3>⚙️ Match & Mode Parameters</h3>
+
+        <label>Tactical Game Mode</label>
+        <select id="gameModeSelect" onchange="handleGameModeChange()">
+          <option value="classic" selected>🎯 Classic Manhunt (Catchers vs Hiders)</option>
+          <option value="infection">☣️ Infection Mode (Caught Hiders become Catchers)</option>
+          <option value="shrinking">⭕ Shrinking Zone (Sector Ring Closes Over Time)</option>
+          <option value="infection_shrinking">🔥 Apex Chaos (Infection + Shrinking Zone)</option>
+        </select>
+
         <div class="grid-2">
           <div>
             <label>Match Duration (Mins)</label>
@@ -753,7 +931,7 @@
             </select>
           </div>
           <div id="circleControls">
-            <label>Sector Radius</label>
+            <label>Initial Sector Radius</label>
             <select id="circleRadiusSelect" onchange="updateSetupBoundary()">
               <option value="100">100m Micro Sector</option>
               <option value="250" selected>250m Standard Sector</option>
@@ -765,13 +943,13 @@
 
         <div id="polygonControls" style="display: none; margin-top: 6px;">
           <button class="secondary" style="font-size: 12px; padding: 6px;" onclick="resetPolygonPoints()">🔄 Reset Perimeter Points</button>
-          <span style="font-size: 11px; color: var(--text-muted); display:block; margin-top:4px;">Tap points on the dark map below to trace custom play boundaries.</span>
+          <span style="font-size: 11px; color: var(--text-muted); display:block; margin-top:4px;">Tap points on the map below to trace custom play boundaries.</span>
         </div>
 
         <div id="setupMap"></div>
         <button class="secondary" style="font-size: 12px; padding: 7px; margin-top: 6px;" onclick="snapSetupMapToGPS()">📍 Center Sector on My Exact GPS</button>
 
-        <button onclick="submitCreate()">Initialize Lobby</button>
+        <button onclick="submitCreate()">Initialize Lobby →</button>
         <button class="secondary" onclick="resetLanding()">Back</button>
         <div id="hostError" style="color: var(--catcher); text-align: center; font-size: 12px; font-weight: 700; margin-top: 8px;"></div>
       </div>
@@ -787,7 +965,6 @@
       <div id="lobbySummary" style="font-size: 11px; color: var(--text-muted); margin-top: 4px; font-family: var(--font-mono);"></div>
     </div>
 
-    <!-- Host Auto-Balance Controls (+ / - Catchers) -->
     <div id="hostRoleControls" class="card" style="display: none;">
       <h3>🤖 Auto-Ratio Active</h3>
       <p style="margin: 0 0 8px 0; font-size: 12px; color: var(--text-muted);">
@@ -805,10 +982,10 @@
     </div>
 
     <div class="card" style="font-size: 11px; color: var(--warning); text-align: center; padding: 10px;">
-      ⚠️ Step outdoors for clear satellite lock, avoid traffic, and keep your screen awake during play.
+      ⚠️ Step outdoors for clear satellite lock, keep Wi-Fi scanning enabled, and stay alert of surroundings.
     </div>
 
-    <button id="startBtn" onclick="startGame()" style="display: none;">🔥 Launch Hunt</button>
+    <button id="startBtn" onclick="startGame()" style="display: none;">🔥 Launch Hunt →</button>
     <button class="secondary" onclick="leaveLobby()">Abort / Leave Lobby</button>
   </div>
 
@@ -844,8 +1021,9 @@
       </div>
 
       <!-- Dynamic Tactical Alerts -->
-      <div id="gpsErrorBanner" class="alert-banner alert-danger">⚠️ GPS BLOCKED/TIMED OUT! Check network & location settings.</div>
+      <div id="gpsErrorBanner" class="alert-banner alert-danger">⚠️ GPS BLOCKED/TIMED OUT! Check location permissions.</div>
       <div id="headStartBanner" class="alert-banner alert-warning"></div>
+      <div id="shrinkingBanner" class="alert-banner alert-extract"></div>
       <div id="extractionBanner" class="alert-banner alert-extract"></div>
       <div id="outOfBoundsBanner" class="alert-banner alert-danger">🚨 OUT OF SECTOR! Live telemetry exposed to Catchers!</div>
       <div id="proximityBanner" class="alert-banner alert-danger">📳 PROXIMITY THREAT: Enemy within 50m!</div>
@@ -853,12 +1031,10 @@
       <!-- Role Action Controls -->
       <div class="feature-buttons">
         <button id="radarBtn" class="secondary" onclick="triggerRadarScan()" style="display:none;">📡 Sonar Sweep</button>
-        <button id="caughtBtn" class="danger" onclick="markSelfCaught()" style="display:none;">🏳️ Surrender (Caught)</button>
-        <button id="hostEndBtn" class="danger" onclick="endGame('🛑 Match terminated by Commander.')" style="display:none;">🛑 End Hunt</button>
-        
-        <!-- [FEATURE] QR TAGGING BUTTONS -->
-        <button id="showQrBtn" class="secondary" onclick="generateMyQR()" style="display:none;">📱 Show ID Tag</button>
+        <button id="caughtBtn" class="danger" onclick="markSelfCaught()" style="display:none;">🏳️ Surrender</button>
+        <button id="showQrBtn" class="secondary" onclick="generateMyQR()" style="display:none;">📱 Show QR Tag</button>
         <button id="scanQrBtn" class="danger" onclick="startScanner()" style="display:none;">📷 Scan Target</button>
+        <button id="hostEndBtn" class="danger" onclick="endGame('🛑 Match terminated by Commander.')" style="display:none;">🛑 End Hunt</button>
       </div>
 
       <!-- Quick Tactical Pings -->
@@ -891,7 +1067,7 @@
        ========================================== -->
   <div id="screen-end" class="screen">
     <div class="brand-header">
-      <h1 class="brand-title">🏆 Hunt Concluded</h1>
+      <h1 class="brand-title">🏆 Hunt <span>Concluded</span></h1>
       <div class="brand-sub">After-Action Report</div>
     </div>
     <div class="card" style="text-align: center; padding: 24px 16px;">
@@ -903,12 +1079,12 @@
     </div>
   </div>
 
-  <!-- [FEATURE] QR Modals Overlay -->
-  <div id="qrModal" class="screen" style="z-index: 2000; background: var(--bg); display: none; align-items: center; justify-content: center; position: fixed; inset: 0;">
-    <div class="card" style="text-align: center; max-width: 300px; width: 100%;">
-      <h3 id="qrModalTitle" style="color: var(--primary);">Tag Target</h3>
-      <div id="qrCodeContainer" style="display: none; background: #fff; padding: 15px; border-radius: 10px; margin: 15px auto; width: max-content;"></div>
-      <div id="qrReader" style="display: none; width: 100%; border-radius: 10px; overflow: hidden; margin: 15px 0;"></div>
+  <!-- QR Modals Overlay -->
+  <div id="qrModal" class="screen" style="z-index: 2600; background: rgba(6, 9, 7, 0.85); backdrop-filter: blur(16px); display: none; align-items: center; justify-content: center; position: fixed; inset: 0;">
+    <div class="card" style="text-align: center; max-width: 310px; width: 100%;">
+      <h3 id="qrModalTitle">Tag Target</h3>
+      <div id="qrCodeContainer" style="display: none; background: #fff; padding: 15px; border-radius: 14px; margin: 15px auto; width: max-content;"></div>
+      <div id="qrReader" style="display: none; width: 100%; border-radius: 14px; overflow: hidden; margin: 15px 0;"></div>
       <button class="secondary" onclick="closeQRModal()">Close</button>
     </div>
   </div>
@@ -922,17 +1098,17 @@
     import { getDatabase, ref, set, get, push, onValue, update, remove } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
     // =========================================================
-    // --- 1. PASTE YOUR FIREBASE CONFIGURATION HERE ---
+    // --- 1. FIREBASE CONFIGURATION ---
     // =========================================================
-      const firebaseConfig = {
-  apiKey: "AIzaSyCrorYSjzN5rooWa4keUkPvSGNQt0tZ1sE",
-  authDomain: "manhunt-1.firebaseapp.com",
-  databaseURL: "https://manhunt-1-default-rtdb.firebaseio.com",
-  projectId: "manhunt-1",
-  storageBucket: "manhunt-1.firebasestorage.app",
-  messagingSenderId: "444030203067",
-  appId: "1:444030203067:web:6bed8c6ebff8662d53e59e"
-};
+    const firebaseConfig = {
+      apiKey: "AIzaSyCrorYSjzN5rooWa4keUkPvSGNQt0tZ1sE",
+      authDomain: "manhunt-1.firebaseapp.com",
+      databaseURL: "https://manhunt-1-default-rtdb.firebaseio.com",
+      projectId: "manhunt-1",
+      storageBucket: "manhunt-1.firebasestorage.app",
+      messagingSenderId: "444030203067",
+      appId: "1:444030203067:web:6bed8c6ebff8662d53e59e"
+    };
 
     if (!firebaseConfig.databaseURL && firebaseConfig.projectId) {
       firebaseConfig.databaseURL = `https://${firebaseConfig.projectId}-default-rtdb.firebaseio.com`;
@@ -942,10 +1118,27 @@
     const db = getDatabase(app);
 
     // =========================================================
-    // --- 1B. PAYLOAD MINIFICATION SERIALIZER ---
+    // --- 1B. THEME SWITCHER (DARK / LIGHT GLASSY) ---
     // =========================================================
-    const COORD_SCALE = 1e5; // ~1.1m precision
-    const VEL_SCALE = 1e6;   // Velocity in deg/sec scaled to integer
+    function applyTheme(theme) {
+      document.documentElement.setAttribute('data-theme', theme);
+      localStorage.setItem('manhunt_theme', theme);
+      const btn = document.getElementById('themeToggleBtn');
+      if (btn) btn.textContent = theme === 'dark' ? '☀️' : '🌙';
+    }
+
+    window.toggleTheme = () => {
+      const current = document.documentElement.getAttribute('data-theme') || 'dark';
+      applyTheme(current === 'dark' ? 'light' : 'dark');
+    };
+
+    applyTheme(localStorage.getItem('manhunt_theme') || 'dark');
+
+    // =========================================================
+    // --- 1C. PAYLOAD MINIFICATION SERIALIZER ---
+    // =========================================================
+    const COORD_SCALE = 1e5;
+    const VEL_SCALE = 1e6;
     const EPOCH_MOD = 100000000;
 
     const NetworkSerializer = {
@@ -1024,6 +1217,10 @@
     let myStatus = "Active";
     let isHost = false;
     let isDev = false;
+    let godModeActive = false;
+    let inspectedRoom = "";
+    let latestPlayersSnapshot = {};
+
     let myLat = null;
     let myLng = null;
     let myVLat = 0;
@@ -1031,7 +1228,6 @@
     let lastGpsFixTime = 0;
     let myAccuracy = 999;
 
-    // [FEATURE] QR State & Instant Fallback Config
     let html5QrcodeScanner = null;
     let gpsConfig = { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 };
 
@@ -1071,17 +1267,20 @@
     let watchId = null;
     let countdownTimer = null;
 
-    // Match Rules & Timers
+    // Match Rules, Game Modes & Timers
+    let gameMode = "classic"; // classic | infection | shrinking | infection_shrinking
     let updateIntervalMs = 180000;
     let radarCooldownMs = 60000;
     let nextPingTime = 0;
     let lastBroadcastAccuracy = 9999;
     let lastBroadcastTime = 0;
+    let gameStartTime = 0;
     let gameEndTime = 0;
     let headStartEndTime = 0;
     let radarMode = "catchers";
     let roleMode = "auto";
     let boundaryData = null;
+    let currentDynamicRadius = 250;
     let extractionData = null;
     let extractionHoldSeconds = 0;
     let lastRadarHandled = 0;
@@ -1093,6 +1292,173 @@
     let hidersChatCache = [];
 
     const HIGH_PRECISION_GPS = { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 };
+
+    // =========================================================
+    // --- 2B. DEVELOPER GOD MODE ENGINE (ACROSS THE GAME) ---
+    // =========================================================
+    function enableDevUI() {
+      isDev = true;
+      sessionStorage.setItem('manhunt_dev_auth', 'true');
+      document.getElementById('godModeBtn').style.display = 'inline-block';
+      document.getElementById('devUnlockBtn').style.display = 'none';
+      refreshGodRooms();
+    }
+
+    window.unlockDevAnywhere = () => {
+      if (isDev) {
+        toggleGodModeDrawer();
+        return;
+      }
+      const pin = prompt("⚡ Enter Master Developer PIN (Vivek):");
+      if (pin === DEV_PIN) {
+        if (!myName) myName = DEV_NAME;
+        enableDevUI();
+        toggleGodModeDrawer();
+      } else if (pin !== null) {
+        alert("Access Denied: Invalid Developer PIN.");
+      }
+    };
+
+    window.toggleGodModeDrawer = () => {
+      if (!isDev) return;
+      const drawer = document.getElementById('godModeDrawer');
+      const btn = document.getElementById('godModeBtn');
+      const isOpening = drawer.style.display !== 'flex';
+      drawer.style.display = isOpening ? 'flex' : 'none';
+      godModeActive = true;
+      btn.classList.add('god-active');
+      if (isOpening) {
+        refreshGodRooms();
+        renderGodTelemetryList(latestPlayersSnapshot);
+      }
+      if (gameActive) renderPlayersAndAlerts(latestPlayersSnapshot);
+    };
+
+    window.refreshGodRooms = async () => {
+      if (!isDev) return;
+      const snap = await get(ref(db, 'rooms'));
+      const sel = document.getElementById('godRoomSelect');
+      sel.innerHTML = '';
+      if (!snap.exists()) {
+        sel.innerHTML = '<option value="">No Active Rooms</option>';
+        return;
+      }
+      const rooms = snap.val();
+      const targetRoom = myRoom || inspectedRoom || Object.keys(rooms)[0];
+      inspectedRoom = targetRoom;
+
+      for (const [rCode, rData] of Object.entries(rooms)) {
+        const pCount = Object.keys(rData.players || {}).length;
+        const opt = document.createElement('option');
+        opt.value = rCode;
+        opt.selected = (rCode === targetRoom);
+        opt.textContent = `Room ${rCode} (${rData.status || 'lobby'} • ${pCount} ops • ${rData.gameMode || 'classic'})`;
+        sel.appendChild(opt);
+      }
+      if (inspectedRoom && rooms[inspectedRoom]) {
+        const pMap = rooms[inspectedRoom].players || {};
+        for (const p of Object.values(pMap)) NetworkSerializer.hydratePlayer(p);
+        renderGodTelemetryList(pMap);
+      }
+    };
+
+    window.switchGodRoom = async (roomCode) => {
+      inspectedRoom = roomCode;
+      await window.refreshGodRooms();
+    };
+
+    function renderGodTelemetryList(players) {
+      if (!isDev) return;
+      const container = document.getElementById('godTelemetryList');
+      if (!container) return;
+      container.innerHTML = '';
+
+      const entries = Object.entries(players || {});
+      if (entries.length === 0) {
+        container.innerHTML = '<div style="font-size:12px; color:var(--text-muted);">No operatives in this room yet.</div>';
+        return;
+      }
+
+      const now = Date.now();
+      for (const [name, p] of entries) {
+        NetworkSerializer.hydratePlayer(p);
+        const hasCoords = typeof p.lat === 'number' && typeof p.lng === 'number';
+        const coordStr = hasCoords ? `${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}` : 'Awaiting GPS...';
+        const speedMps = hasCoords ? (Math.hypot(p.vLat || 0, p.vLng || 0) * 111320).toFixed(1) : '0.0';
+        const pingAge = p.lastUpdated ? `${Math.max(0, Math.round((now - p.lastUpdated) / 1000))}s ago` : 'N/A';
+        const distFromMe = (hasCoords && myLat && myLng) ? `${Math.round(calcMeters(myLat, myLng, p.lat, p.lng))}m` : '--';
+
+        const card = document.createElement('div');
+        card.className = 'god-telemetry-card';
+        card.innerHTML = `
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <b>${p.avatar || '🥷'} ${name}</b>
+            <span class="role-pill ${p.role === 'Catcher' ? 'pill-catcher' : 'pill-hider'}">${p.role} • ${p.status || 'Active'}</span>
+          </div>
+          <div style="font-family:var(--font-mono); font-size:11px; color:var(--text-muted); margin-top:4px;">
+            📍 ${coordStr} (${distFromMe})<br>
+            🛰️ ±${p.accuracy || '--'}m | 🏃 ${speedMps} m/s | 🧭 ${p.heading || 0}° | ⏱️ ${pingAge}
+            ${p.outOfBounds ? '<span style="color:var(--warning); font-weight:bold;"> | 🚨 OOB</span>' : ''}
+          </div>
+        `;
+
+        const actRow = document.createElement('div');
+        actRow.className = 'god-telemetry-actions';
+
+        const focusBtn = document.createElement('button');
+        focusBtn.className = 'secondary';
+        focusBtn.textContent = '🎯 Center Pin';
+        focusBtn.onclick = () => {
+          if (map && hasCoords) {
+            map.setView([p.lat, p.lng], 19);
+            document.getElementById('godModeDrawer').style.display = 'none';
+          }
+        };
+
+        const roleBtn = document.createElement('button');
+        roleBtn.className = 'secondary';
+        roleBtn.textContent = p.role === 'Catcher' ? '🔄 Make Hider' : '🔄 Make Catcher';
+        roleBtn.onclick = () => {
+          const rTarget = myRoom || inspectedRoom;
+          if (!rTarget) return;
+          const nextRole = p.role === 'Catcher' ? 'Hider' : 'Catcher';
+          update(ref(db, `rooms/${rTarget}/players/${name}`), { role: nextRole, status: 'Active' });
+          window.refreshGodRooms();
+        };
+
+        const statusBtn = document.createElement('button');
+        statusBtn.className = p.status === 'Caught' ? 'secondary' : 'danger';
+        statusBtn.textContent = p.status === 'Caught' ? '💚 Revive' : '💀 Mark Caught';
+        statusBtn.onclick = () => {
+          const rTarget = myRoom || inspectedRoom;
+          if (!rTarget) return;
+          const nextStatus = p.status === 'Caught' ? 'Active' : 'Caught';
+          update(ref(db, `rooms/${rTarget}/players/${name}`), { status: nextStatus, outOfBounds: false });
+          window.refreshGodRooms();
+        };
+
+        actRow.appendChild(focusBtn);
+        actRow.appendChild(roleBtn);
+        actRow.appendChild(statusBtn);
+        card.appendChild(actRow);
+        container.appendChild(card);
+      }
+    }
+
+    window.godForceRadar = () => {
+      const rTarget = myRoom || inspectedRoom;
+      if (!rTarget) return;
+      update(ref(db, `rooms/${rTarget}`), { radarSweep: Date.now() });
+    };
+
+    window.godAddTime = async (mins) => {
+      const rTarget = myRoom || inspectedRoom;
+      if (!rTarget) return;
+      const snap = await get(ref(db, `rooms/${rTarget}/endTime`));
+      const curEnd = snap.val() || Date.now();
+      await update(ref(db, `rooms/${rTarget}`), { endTime: curEnd + mins * 60000 });
+      gameEndTime = curEnd + mins * 60000;
+    };
 
     // =========================================================
     // --- 3. WEB AUDIO SYNTHESIZER (SONAR & HEARTBEAT) ---
@@ -1285,7 +1651,7 @@
       const accText = myAccuracy < 900 ? `±${Math.round(myAccuracy)}m` : 'Locking...';
       const minBadge = lastMinifiedRatioText ? ` | 📦 ${lastMinifiedRatioText}` : '';
       pill.textContent = `🛰️ ${accText} | 🧭 ${myHeading}°${minBadge}`;
-      pill.style.color = myAccuracy <= 20 ? 'var(--extract)' : (myAccuracy <= 50 ? 'var(--warning)' : '#ff6b8b');
+      pill.style.color = myAccuracy <= 20 ? 'var(--primary)' : (myAccuracy <= 50 ? 'var(--warning)' : 'var(--catcher)');
     }
 
     // =========================================================
@@ -1311,15 +1677,22 @@
       });
     }
 
-    // [FEATURE] Auto-Generated Room Codes 
     function generateTacticalCode() {
-      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // No tricky chars
+      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
       let code = '';
       for (let i = 0; i < 4; i++) {
         code += chars.charAt(Math.floor(Math.random() * chars.length));
       }
       return code;
     }
+
+    window.handleGameModeChange = () => {
+      const mode = document.getElementById('gameModeSelect').value;
+      if (mode === 'shrinking' || mode === 'infection_shrinking') {
+        document.getElementById('boundaryTypeSelect').value = 'circle';
+        window.toggleBoundaryMode();
+      }
+    };
 
     window.addEventListener('DOMContentLoaded', async () => {
       renderAvatarGrids();
@@ -1328,6 +1701,10 @@
       const savedRoom = localStorage.getItem('manhunt_room');
       const savedAvatar = localStorage.getItem('manhunt_avatar');
       const savedDevAuth = sessionStorage.getItem('manhunt_dev_auth') === 'true';
+
+      if (savedDevAuth) {
+        enableDevUI();
+      }
 
       if (savedAvatar) {
         myAvatar = savedAvatar;
@@ -1342,7 +1719,9 @@
             if (roomVal.players && roomVal.players[savedName]) {
               myName = savedName;
               myRoom = savedRoom;
-              isDev = (myName.trim().toLowerCase() === DEV_NAME.toLowerCase()) && savedDevAuth;
+              if ((myName.trim().toLowerCase() === DEV_NAME.toLowerCase()) && savedDevAuth) {
+                enableDevUI();
+              }
               isHost = (roomVal.host === myName);
               myRole = roomVal.players[myName].role || 'Hider';
               myAvatar = roomVal.players[myName].avatar || myAvatar;
@@ -1365,10 +1744,7 @@
       document.getElementById('home-choices').style.display = 'none';
       document.getElementById('join-form').style.display = 'none';
       document.getElementById('host-form').style.display = 'block';
-      
-      // Auto-fill tactical room code
       document.getElementById('hostRoomCode').value = generateTacticalCode();
-      
       setTimeout(initSetupMap, 200);
     };
 
@@ -1438,6 +1814,15 @@
       if (!navigator.geolocation) return;
       if (setupWatchId !== null) navigator.geolocation.clearWatch(setupWatchId);
 
+      // Fast coarse lock first so host map centers immediately
+      navigator.geolocation.getCurrentPosition((pos) => {
+        chosenCircleCenter = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        if (setupMap) {
+          setupMap.setView([chosenCircleCenter.lat, chosenCircleCenter.lng], 17);
+          updateSetupBoundary();
+        }
+      }, () => {}, { enableHighAccuracy: false, timeout: 4000, maximumAge: 30000 });
+
       let bestAcc = 9999;
       setupWatchId = navigator.geolocation.watchPosition((pos) => {
         const acc = pos.coords.accuracy || 999;
@@ -1476,28 +1861,29 @@
       if (mode === 'circle') {
         const radius = parseInt(document.getElementById('circleRadiusSelect').value) || 250;
         setupLayer = L.circle([chosenCircleCenter.lat, chosenCircleCenter.lng], {
-          color: '#00f0ff', fillColor: '#00f0ff', fillOpacity: 0.15, weight: 2, radius
+          color: '#a3ff00', fillColor: '#a3ff00', fillOpacity: 0.15, weight: 2, radius
         }).addTo(setupMap);
       } else if (mode === 'polygon') {
         if (polygonPoints.length > 1) {
           setupLayer = L.polygon(polygonPoints, {
-            color: '#00f0ff', fillColor: '#00f0ff', fillOpacity: 0.2, weight: 2
+            color: '#a3ff00', fillColor: '#a3ff00', fillOpacity: 0.2, weight: 2
           }).addTo(setupMap);
         } else if (polygonPoints.length === 1) {
-          setupLayer = L.circleMarker(polygonPoints[0], { radius: 6, color: '#00f0ff' }).addTo(setupMap);
+          setupLayer = L.circleMarker(polygonPoints[0], { radius: 6, color: '#a3ff00' }).addTo(setupMap);
         }
       }
     };
 
     // =========================================================
-    // --- 7. ROOM CREATION, JOINING ---
+    // --- 7. ROOM CREATION & JOINING ---
     // =========================================================
     window.submitCreate = async () => {
       const errEl = document.getElementById('hostError');
       errEl.innerText = "";
       myName = document.getElementById('hostName').value.trim();
-      myRoom = document.getElementById('hostRoomCode').value.trim();
+      myRoom = document.getElementById('hostRoomCode').value.trim().toUpperCase();
       roleMode = document.getElementById('roleModeSelect').value;
+      gameMode = document.getElementById('gameModeSelect').value;
 
       if (!myName || !myRoom) {
         errEl.innerText = "Enter both Host Name and Room Code.";
@@ -1514,7 +1900,6 @@
         return;
       }
 
-      // [FEATURE] Developer Re-entry Fix
       let tryingDev = (myName.toLowerCase() === DEV_NAME.toLowerCase());
       if (tryingDev) {
         if (sessionStorage.getItem('manhunt_dev_auth') !== 'true') {
@@ -1523,10 +1908,9 @@
             errEl.innerText = "Invalid Developer PIN. Access denied.";
             return;
           }
-          sessionStorage.setItem('manhunt_dev_auth', 'true');
         }
+        enableDevUI();
       }
-      isDev = tryingDev;
       isHost = true;
       myRole = "Catcher";
 
@@ -1541,7 +1925,11 @@
       localStorage.setItem('manhunt_room', myRoom);
       localStorage.setItem('manhunt_avatar', myAvatar);
 
-      const bType = document.getElementById('boundaryTypeSelect').value;
+      let bType = document.getElementById('boundaryTypeSelect').value;
+      if (gameMode === 'shrinking' || gameMode === 'infection_shrinking') {
+        bType = 'circle';
+      }
+
       let finalBoundary = null;
       let extractionCenter = { lat: chosenCircleCenter.lat, lng: chosenCircleCenter.lng };
 
@@ -1562,6 +1950,7 @@
       const roomData = {
         status: 'lobby',
         host: myName,
+        gameMode: gameMode,
         roleMode: roleMode,
         catcherOffset: 0,
         durationMins: parseInt(document.getElementById('gameDuration').value) || 30,
@@ -1586,7 +1975,7 @@
       const errEl = document.getElementById('joinError');
       errEl.innerText = "";
       myName = document.getElementById('joinName').value.trim();
-      myRoom = document.getElementById('joinRoomCode').value.trim();
+      myRoom = document.getElementById('joinRoomCode').value.trim().toUpperCase();
 
       if (!myName || !myRoom) {
         errEl.innerText = "Enter both your Operative Name and Room Code.";
@@ -1614,7 +2003,6 @@
         }
       }
 
-      // [FEATURE] Developer Re-entry Fix
       let tryingDev = (myName.toLowerCase() === DEV_NAME.toLowerCase());
       if (tryingDev) {
         if (sessionStorage.getItem('manhunt_dev_auth') !== 'true') {
@@ -1623,10 +2011,9 @@
             errEl.innerText = "Invalid Developer PIN. Access denied.";
             return;
           }
-          sessionStorage.setItem('manhunt_dev_auth', 'true');
         }
+        enableDevUI();
       }
-      isDev = tryingDev;
       isHost = (val.host === myName);
 
       initCompass();
@@ -1668,20 +2055,30 @@
         if (!snap.exists()) return;
         const val = snap.val();
         roleMode = val.roleMode || 'auto';
+        gameMode = val.gameMode || 'classic';
 
         document.getElementById('hostRoleControls').style.display = ((isHost || isDev) && roleMode === 'auto') ? 'block' : 'none';
 
+        const modeLabel = {
+          classic: 'CLASSIC',
+          infection: '☣️ INFECTION',
+          shrinking: '⭕ SHRINKING',
+          infection_shrinking: '🔥 APEX CHAOS'
+        }[gameMode] || 'CLASSIC';
+
         const speedText = val.pingInterval === 0 ? "LIVE" : `${val.pingInterval / 60000}M`;
-        const cdSec = Math.round((val.radarCooldownMs || 60000) / 1000);
         const bText = !val.boundary ? "NONE" : (val.boundary.type === 'circle' ? `${val.boundary.radius}M` : "POLYGON");
         document.getElementById('lobbySummary').textContent =
-          `${val.durationMins}M | GPS: ${speedText} | RADAR CD: ${cdSec}S | ZONE: ${bText}`;
+          `${modeLabel} | ${val.durationMins}M | GPS: ${speedText} | ZONE: ${bText}`;
 
         const players = val.players || {};
+        latestPlayersSnapshot = players;
+        if (isDev) renderGodTelemetryList(players);
+
         const pNames = Object.keys(players);
         document.getElementById('playerCountLabel').textContent = pNames.length;
 
-        if (isHost && roleMode === 'auto' && pNames.length > 1) {
+        if (isHost && roleMode === 'auto' && pNames.length > 1 && val.status === 'lobby') {
           const offset = val.catcherOffset || 0;
           const baseCatchers = Math.max(1, Math.round(pNames.length / 4));
           const boundedTarget = Math.max(1, Math.min(pNames.length - 1, baseCatchers + offset));
@@ -1793,6 +2190,7 @@
       const now = Date.now();
       await update(ref(db, `rooms/${myRoom}`), {
         status: 'playing',
+        startTime: now,
         endTime: now + (val.durationMins * 60000),
         headStartEndTime: now + (val.headStartMs || 0),
         radarSweep: 0
@@ -1802,6 +2200,24 @@
     // =========================================================
     // --- 9. CORE GAME ENGINE & INITIALIZATION ---
     // =========================================================
+    function refreshRoleHUD() {
+      document.getElementById('roleBadge').textContent = `${myAvatar} ${myRole} ${isDev ? '⚡' : ''}`;
+      document.getElementById('roleBadge').style.color = (myRole === 'Catcher') ? 'var(--catcher)' : 'var(--primary)';
+      document.getElementById('caughtBtn').style.display = (myRole === 'Hider' && myStatus !== 'Caught') ? 'block' : 'none';
+      document.getElementById('showQrBtn').style.display = (myRole === 'Hider' && myStatus !== 'Caught') ? 'block' : 'none';
+      document.getElementById('scanQrBtn').style.display = (myRole === 'Catcher' || isDev) ? 'block' : 'none';
+      document.getElementById('hostEndBtn').style.display = (isHost || isDev) ? 'block' : 'none';
+
+      const canUseRadar = isDev || (radarMode === 'all') || (radarMode === 'catchers' && myRole === 'Catcher');
+      const radarBtn = document.getElementById('radarBtn');
+      radarBtn.style.display = canUseRadar ? 'block' : 'none';
+      if (isDev) {
+        radarBtn.textContent = "📡 Sonar (⚡ No CD)";
+      }
+
+      document.getElementById('tabHiders').style.display = (myRole === 'Hider' || isDev) ? 'block' : 'none';
+    }
+
     async function initGame() {
       if (gameActive) return;
       gameActive = true;
@@ -1812,6 +2228,8 @@
 
       const snap = await get(ref(db, `rooms/${myRoom}`));
       const val = snap.val();
+      gameMode = val.gameMode || "classic";
+      gameStartTime = val.startTime || Date.now();
       gameEndTime = val.endTime;
       updateIntervalMs = val.pingInterval ?? 180000;
       radarCooldownMs = val.radarCooldownMs ?? 60000;
@@ -1820,30 +2238,16 @@
       boundaryData = val.boundary || null;
       extractionData = val.extraction || null;
 
+      if (boundaryData && boundaryData.type === 'circle') {
+        currentDynamicRadius = boundaryData.radius;
+      }
+
       if (val.players && val.players[myName]) {
         myRole = val.players[myName].role;
+        myStatus = val.players[myName].status || 'Active';
       }
 
-      // HUD Setup
-      document.getElementById('roleBadge').textContent = `${myAvatar} ${myRole} ${isDev ? '⚡' : ''}`;
-      document.getElementById('roleBadge').style.color = (myRole === 'Catcher') ? 'var(--catcher)' : 'var(--primary)';
-      document.getElementById('caughtBtn').style.display = (myRole === 'Hider' && myStatus !== 'Caught') ? 'block' : 'none';
-      document.getElementById('hostEndBtn').style.display = (isHost || isDev) ? 'block' : 'none';
-
-      // [FEATURE] Display QR tagging buttons appropriately 
-      document.getElementById('showQrBtn').style.display = (myRole === 'Hider' && myStatus !== 'Caught') ? 'block' : 'none';
-      document.getElementById('scanQrBtn').style.display = (myRole === 'Catcher' || isDev) ? 'block' : 'none';
-
-      const canUseRadar = isDev || (radarMode === 'all') || (radarMode === 'catchers' && myRole === 'Catcher');
-      const radarBtn = document.getElementById('radarBtn');
-      radarBtn.style.display = canUseRadar ? 'block' : 'none';
-      if (isDev) {
-        radarBtn.textContent = "📡 Sonar Sweep (⚡ No CD)";
-      }
-
-      if (myRole === 'Hider' || isDev) {
-        document.getElementById('tabHiders').style.display = 'block';
-      }
+      refreshRoleHUD();
 
       // Initialize Tactical Map
       map = L.map('map', { zoomControl: false }).setView([18.5204, 73.8567], 17);
@@ -1852,12 +2256,12 @@
       if (boundaryData) {
         if (boundaryData.type === 'circle') {
           activeBoundaryLayer = L.circle([boundaryData.lat, boundaryData.lng], {
-            color: '#00f0ff', fillColor: '#00f0ff', fillOpacity: 0.08, weight: 2, dashArray: '6, 6', radius: boundaryData.radius
+            color: '#a3ff00', fillColor: '#a3ff00', fillOpacity: 0.08, weight: 2, dashArray: '6, 6', radius: boundaryData.radius
           }).addTo(map);
           map.setView([boundaryData.lat, boundaryData.lng], 17);
         } else if (boundaryData.type === 'polygon' && boundaryData.points) {
           activeBoundaryLayer = L.polygon(boundaryData.points, {
-            color: '#00f0ff', fillColor: '#00f0ff', fillOpacity: 0.1, weight: 2, dashArray: '6, 6'
+            color: '#a3ff00', fillColor: '#a3ff00', fillOpacity: 0.1, weight: 2, dashArray: '6, 6'
           }).addTo(map);
           map.fitBounds(activeBoundaryLayer.getBounds());
         }
@@ -1874,13 +2278,17 @@
         for (const p of Object.values(players)) {
           NetworkSerializer.hydratePlayer(p);
         }
+        latestPlayersSnapshot = players;
+        if (isDev) renderGodTelemetryList(players);
+
         if (players[myName]) {
+          const prevRole = myRole;
           myStatus = players[myName].status;
           myRole = players[myName].role;
-          
-          // Re-evaluate button states if caught
-          document.getElementById('caughtBtn').style.display = (myRole === 'Hider' && myStatus !== 'Caught') ? 'block' : 'none';
-          document.getElementById('showQrBtn').style.display = (myRole === 'Hider' && myStatus !== 'Caught') ? 'block' : 'none';
+          if (prevRole !== myRole) {
+            playSonarPing();
+          }
+          refreshRoleHUD();
         }
         renderPlayersAndAlerts(players);
         checkWin(players);
@@ -1906,12 +2314,10 @@
         if (activeChatTab === 'global') renderChatMessages();
       });
 
-      if (myRole === 'Hider' || isDev) {
-        onValue(ref(db, `rooms/${myRoom}/chat_hiders`), (cSnap) => {
-          hidersChatCache = cSnap.val() ? Object.values(cSnap.val()) : [];
-          if (activeChatTab === 'hiders') renderChatMessages();
-        });
-      }
+      onValue(ref(db, `rooms/${myRoom}/chat_hiders`), (cSnap) => {
+        hidersChatCache = cSnap.val() ? Object.values(cSnap.val()) : [];
+        if (activeChatTab === 'hiders') renderChatMessages();
+      });
 
       // Game End Listener
       onValue(ref(db, `rooms/${myRoom}/status`), async (sSnap) => {
@@ -1990,16 +2396,13 @@
     }
 
     // =========================================================
-    // --- 10. CONTINUOUS GPS, FALLBACK & GEOFENCE ---
+    // --- 10. TWO-STAGE INSTANT GPS + FALLBACK & GEOFENCE ---
     // =========================================================
-
-    // [FEATURE] Instant GPS Fallback Logic
     function handleGpsError(err) {
-      if (err.code === 1) { // PERMISSION_DENIED
+      if (err.code === 1) {
         document.getElementById('gpsErrorBanner').style.display = 'block';
-      } else if (err.code === 3) { // TIMEOUT
-        console.warn("High precision GPS timed out. Falling back to standard precision mode.");
-        gpsConfig.enableHighAccuracy = false; // Turn off high-accuracy for faster fix
+      } else if (err.code === 3) {
+        gpsConfig.enableHighAccuracy = false;
         if (watchId !== null) navigator.geolocation.clearWatch(watchId);
         watchId = navigator.geolocation.watchPosition(processGpsUpdate, handleGpsError, gpsConfig);
       }
@@ -2010,7 +2413,7 @@
       const newAcc = pos.coords.accuracy || 999;
 
       if (myLat !== null && newAcc > 120 && myAccuracy < 35) {
-        return; // Ignore wild jumping points if we had a solid lock
+        return;
       }
 
       const now = Date.now();
@@ -2063,17 +2466,35 @@
       if (updateIntervalMs === 0) {
         document.getElementById('nextUpdate').textContent = "📡 LIVE";
       }
-      
-      // Ensure we start by trying high precision every time we boot the game
-      gpsConfig.enableHighAccuracy = true; 
+
+      // STAGE 1: Instant Coarse Tower/Wi-Fi Lock (< 1s)
+      navigator.geolocation.getCurrentPosition(
+        (coarsePos) => {
+          if (myLat === null || myLng === null) {
+            myLat = coarsePos.coords.latitude;
+            myLng = coarsePos.coords.longitude;
+            myAccuracy = coarsePos.coords.accuracy || 250;
+            updateTelemetryPill();
+            if (map) map.setView([myLat, myLng], 16);
+            broadcastPositionToFirebase(false);
+          }
+        },
+        () => {},
+        { enableHighAccuracy: false, timeout: 4000, maximumAge: 30000 }
+      );
+
+      // STAGE 2: High-Precision Satellite Watch
+      gpsConfig.enableHighAccuracy = true;
       watchId = navigator.geolocation.watchPosition(processGpsUpdate, handleGpsError, gpsConfig);
     }
 
     function checkMyOutOfBounds() {
-      if (!boundaryData || myRole !== 'Hider' || myStatus === 'Caught' || myLat === null) return false;
+      // Ignore false OOB alerts while phone is still on coarse cell-tower lock (> 65m accuracy)
+      if (!boundaryData || myRole !== 'Hider' || myStatus === 'Caught' || myLat === null || myAccuracy > 65) return false;
       if (boundaryData.type === 'circle') {
         const dist = calcMeters(myLat, myLng, boundaryData.lat, boundaryData.lng);
-        return dist > boundaryData.radius;
+        const activeRad = (gameMode === 'shrinking' || gameMode === 'infection_shrinking') ? currentDynamicRadius : boundaryData.radius;
+        return dist > activeRad;
       } else if (boundaryData.type === 'polygon' && boundaryData.points) {
         return !isPointInPolygon([myLat, myLng], boundaryData.points);
       }
@@ -2133,7 +2554,8 @@
           if (d < closestEnemyDist) closestEnemyDist = d;
         }
 
-        if (myRole === 'Catcher' && !isDev && p.role === 'Hider' && inHeadStart && !p.outOfBounds) {
+        // Head-Start Stealth Rule (Bypassed in Developer God Mode)
+        if (myRole === 'Catcher' && !isDev && !godModeActive && p.role === 'Hider' && inHeadStart && !p.outOfBounds) {
           if (markers[name]) { map.removeLayer(markers[name]); delete markers[name]; }
           if (deadReckoningEntities[name]) { delete deadReckoningEntities[name]; }
           if (ghostRings[name]) { map.removeLayer(ghostRings[name]); delete ghostRings[name]; }
@@ -2182,7 +2604,7 @@
         if ((name === myName || isDev) && p.accuracy && p.accuracy > 5) {
           if (!accuracyRings[name]) {
             accuracyRings[name] = L.circle([p.lat, p.lng], {
-              color: '#ffffff', fillColor: '#ffffff', fillOpacity: 0.04, weight: 1, radius: p.accuracy
+              color: '#a3ff00', fillColor: '#a3ff00', fillOpacity: 0.04, weight: 1, radius: p.accuracy
             }).addTo(map);
           } else {
             accuracyRings[name].setRadius(p.accuracy);
@@ -2195,7 +2617,7 @@
           if (ghostRadius > 8) {
             if (!ghostRings[name]) {
               ghostRings[name] = L.circle([p.lat, p.lng], {
-                color: '#00f0ff', fillColor: '#00f0ff', fillOpacity: 0.06, weight: 1, dashArray: '4, 6', radius: ghostRadius
+                color: '#a3ff00', fillColor: '#a3ff00', fillOpacity: 0.06, weight: 1, dashArray: '4, 6', radius: ghostRadius
               }).addTo(map);
             } else {
               ghostRings[name].setLatLng([p.lat, p.lng]);
@@ -2214,9 +2636,16 @@
 
         if (p.accuracy) {
           const accInfo = document.createElement('div');
-          accInfo.style.cssText = "color:#8b9bb4; font-size:11px; margin-top:2px;";
+          accInfo.style.cssText = "color:var(--text-muted); font-size:11px; margin-top:2px;";
           accInfo.textContent = `GPS Lock: ±${p.accuracy}m`;
           popupContainer.appendChild(accInfo);
+        }
+
+        if (isDev && p.lat && p.lng) {
+          const devInfo = document.createElement('div');
+          devInfo.style.cssText = "color:var(--primary); font-family:var(--font-mono); font-size:10px; margin-top:2px;";
+          devInfo.textContent = `⚡ ${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}`;
+          popupContainer.appendChild(devInfo);
         }
 
         if (p.outOfBounds) {
@@ -2230,7 +2659,7 @@
           const catchBtn = document.createElement('button');
           catchBtn.className = "danger";
           catchBtn.style.cssText = "margin-top:6px; padding:5px 10px; font-size:11px;";
-          catchBtn.textContent = "🎯 Mark Caught";
+          catchBtn.textContent = (gameMode === 'infection' || gameMode === 'infection_shrinking') ? "☣️ Infect Hider" : "🎯 Mark Caught";
           catchBtn.onclick = () => window.catchHider(name);
           popupContainer.appendChild(catchBtn);
         }
@@ -2264,7 +2693,7 @@
     }
 
     // =========================================================
-    // --- 12. HUD COUNTDOWN & ENDGAME EXTRACTION ZONE ---
+    // --- 12. HUD COUNTDOWN, SHRINKING ZONE & EXTRACTION ---
     // =========================================================
     function updateHUD() {
       const now = Date.now();
@@ -2276,6 +2705,26 @@
       if (left === 0 && gameEndTime > 0) {
         endGame("🏃 Hiders Survived! Clock expired.");
         return;
+      }
+
+      // Shrinking Zone Calculation
+      const shrinkBanner = document.getElementById('shrinkingBanner');
+      if ((gameMode === 'shrinking' || gameMode === 'infection_shrinking') && boundaryData && boundaryData.type === 'circle') {
+        const totalDuration = Math.max(1, gameEndTime - gameStartTime);
+        const progress = Math.min(1, Math.max(0, (now - gameStartTime) / totalDuration));
+        const minRadius = 35;
+        currentDynamicRadius = Math.round(boundaryData.radius - (boundaryData.radius - minRadius) * progress);
+
+        if (activeBoundaryLayer) {
+          activeBoundaryLayer.setRadius(currentDynamicRadius);
+        }
+        shrinkBanner.style.display = 'block';
+        shrinkBanner.textContent = `⭕ CLOSING NET ACTIVE: Sector Radius ${currentDynamicRadius}m`;
+
+        const isOOB = checkMyOutOfBounds();
+        document.getElementById('outOfBoundsBanner').style.display = isOOB ? 'block' : 'none';
+      } else {
+        shrinkBanner.style.display = 'none';
       }
 
       const hsBanner = document.getElementById('headStartBanner');
@@ -2291,7 +2740,7 @@
       if (left <= 180 && left > 0 && extractionData && map) {
         if (!extractionLayer) {
           extractionLayer = L.circle([extractionData.lat, extractionData.lng], {
-            color: '#00ff87', fillColor: '#00ff87', fillOpacity: 0.25, weight: 3, radius: extractionData.radius
+            color: '#a3ff00', fillColor: '#a3ff00', fillOpacity: 0.28, weight: 3, radius: extractionData.radius
           }).addTo(map);
           extractionLayer.bindPopup("<b>🚁 Extraction Zone</b><br>Hiders: Hold inside for 30s to win!");
           playSonarPing();
@@ -2313,7 +2762,7 @@
           }
         } else {
           extBanner.style.display = 'block';
-          extBanner.textContent = `🚁 EXTRACTION ZONE SPAWNED! Defend the green sector!`;
+          extBanner.textContent = `🚁 EXTRACTION ZONE SPAWNED! Defend the green core!`;
         }
       }
 
@@ -2330,7 +2779,7 @@
     }
 
     // =========================================================
-    // --- 13. SONAR RADAR & LOGIC ---
+    // --- 13. SONAR RADAR & INFECTION / CATCH LOGIC ---
     // =========================================================
     window.triggerRadarScan = () => {
       update(ref(db, `rooms/${myRoom}`), { radarSweep: Date.now() });
@@ -2356,18 +2805,39 @@
       }, 1000);
     };
 
+    // Handles both Classic Catch and Infection Conversion
+    function applyCaptureToPlayer(targetName) {
+      const isInfection = (gameMode === 'infection' || gameMode === 'infection_shrinking');
+      if (isInfection) {
+        update(ref(db, `rooms/${myRoom}/players/${targetName}`), {
+          role: 'Catcher',
+          status: 'Active',
+          outOfBounds: false
+        });
+        push(ref(db, `rooms/${myRoom}/chat_global`), {
+          sender: "☣️ BIO-ALERT",
+          text: `${targetName} was infected and is now a Catcher!`
+        });
+      } else {
+        update(ref(db, `rooms/${myRoom}/players/${targetName}`), {
+          status: 'Caught',
+          outOfBounds: false
+        });
+        push(ref(db, `rooms/${myRoom}/chat_global`), {
+          sender: "🎯 TACTICAL",
+          text: `Operative ${targetName} neutralized!`
+        });
+      }
+    }
+
     window.markSelfCaught = () => {
       myVLat = 0;
       myVLng = 0;
-      update(ref(db, `rooms/${myRoom}/players/${myName}`), { status: 'Caught', outOfBounds: false });
-      document.getElementById('caughtBtn').style.display = 'none';
-      document.getElementById('showQrBtn').style.display = 'none'; // hide QR button
-      sendQuickPing("🏳️ Operative captured!");
+      applyCaptureToPlayer(myName);
     };
 
     window.catchHider = (target) => {
-      update(ref(db, `rooms/${myRoom}/players/${target}`), { status: 'Caught', outOfBounds: false });
-      sendQuickPing(`🎯 Captured operative ${target}!`);
+      applyCaptureToPlayer(target);
     };
 
     window.switchChatChannel = (tab) => {
@@ -2414,16 +2884,19 @@
     };
 
     function checkWin(players) {
-      let totalHiders = 0;
+      const pList = Object.values(players);
+      if (pList.length < 2) return;
       let activeHiders = 0;
-      for (const p of Object.values(players)) {
-        if (p.role === 'Hider') {
-          totalHiders++;
-          if (p.status !== 'Caught') activeHiders++;
+      for (const p of pList) {
+        if (p.role === 'Hider' && p.status !== 'Caught') {
+          activeHiders++;
         }
       }
-      if (totalHiders > 0 && activeHiders === 0) {
-        endGame("🕵️ Catchers Win! All Hiders neutralized.");
+      if (activeHiders === 0) {
+        const winText = (gameMode === 'infection' || gameMode === 'infection_shrinking')
+          ? "☣️ Outbreak Complete! All Hiders infected."
+          : "🕵️ Catchers Win! All Hiders neutralized.";
+        endGame(winText);
       }
     }
 
@@ -2435,7 +2908,7 @@
       gameActive = false;
       if (drAnimationFrame) cancelAnimationFrame(drAnimationFrame);
       document.getElementById('proximityVignette').classList.remove('vignette-active');
-      window.closeQRModal(); // ensure scanner isn't left running
+      window.closeQRModal();
 
       if (wakeLock) {
         wakeLock.release().catch(() => {});
@@ -2457,15 +2930,15 @@
       localStorage.removeItem('manhunt_room');
       location.reload();
     };
-    
+
     // =========================================================
-    // --- 14. [FEATURE] QR CODE GENERATOR & SCANNER ---
+    // --- 14. QR CODE GENERATOR & SCANNER ---
     // =========================================================
     window.generateMyQR = () => {
       const qrData = `MANHUNT_TAG:${myRoom}:${myName}`;
       const container = document.getElementById("qrCodeContainer");
-      container.innerHTML = ""; 
-      
+      container.innerHTML = "";
+
       new QRCode(container, {
         text: qrData,
         width: 200,
@@ -2475,14 +2948,14 @@
         correctLevel: QRCode.CorrectLevel.H
       });
 
-      document.getElementById("qrModalTitle").textContent = "Your ID Tag";
+      document.getElementById("qrModalTitle").textContent = "Your Operative ID Tag";
       document.getElementById("qrReader").style.display = "none";
       container.style.display = "block";
       document.getElementById("qrModal").style.display = "flex";
     };
 
     window.startScanner = () => {
-      document.getElementById("qrModalTitle").textContent = "Scan Target";
+      document.getElementById("qrModalTitle").textContent = "Scan Hider QR Tag";
       document.getElementById("qrCodeContainer").style.display = "none";
       document.getElementById("qrReader").style.display = "block";
       document.getElementById("qrModal").style.display = "flex";
@@ -2497,20 +2970,19 @@
         (decodedText) => {
           if (decodedText.startsWith(`MANHUNT_TAG:${myRoom}:`)) {
             const targetName = decodedText.split(':')[2];
-            
-            // Stop scanner, catch target, play sound
+
             html5QrcodeScanner.stop();
             window.catchHider(targetName);
-            playSonarPing(); 
-            
-            document.getElementById("qrModalTitle").textContent = `🎯 Target ${targetName} Captured!`;
+            playSonarPing();
+
+            document.getElementById("qrModalTitle").textContent = `🎯 ${targetName} Tagged!`;
             document.getElementById("qrReader").style.display = "none";
-            
+
             setTimeout(window.closeQRModal, 2000);
           }
         },
-        (errorMessage) => { /* ignore frame errors */ }
-      ).catch(err => {
+        () => {}
+      ).catch(() => {
         alert("Camera access denied or unavailable.");
       });
     };
@@ -2518,7 +2990,7 @@
     window.closeQRModal = () => {
       document.getElementById("qrModal").style.display = "none";
       if (html5QrcodeScanner && html5QrcodeScanner.isScanning) {
-        html5QrcodeScanner.stop().catch(e => console.log(e));
+        html5QrcodeScanner.stop().catch(() => {});
       }
     };
 
