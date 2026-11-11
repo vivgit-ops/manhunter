@@ -13,6 +13,10 @@
   <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 
+  <!-- [FEATURE] QR Code Scanner CDNs -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+
   <style>
     :root {
       --bg: #050811;
@@ -840,7 +844,7 @@
       </div>
 
       <!-- Dynamic Tactical Alerts -->
-      <div id="gpsErrorBanner" class="alert-banner alert-danger">⚠️ GPS BLOCKED! Enable Precise Location Permissions in browser settings.</div>
+      <div id="gpsErrorBanner" class="alert-banner alert-danger">⚠️ GPS BLOCKED/TIMED OUT! Check network & location settings.</div>
       <div id="headStartBanner" class="alert-banner alert-warning"></div>
       <div id="extractionBanner" class="alert-banner alert-extract"></div>
       <div id="outOfBoundsBanner" class="alert-banner alert-danger">🚨 OUT OF SECTOR! Live telemetry exposed to Catchers!</div>
@@ -851,6 +855,10 @@
         <button id="radarBtn" class="secondary" onclick="triggerRadarScan()" style="display:none;">📡 Sonar Sweep</button>
         <button id="caughtBtn" class="danger" onclick="markSelfCaught()" style="display:none;">🏳️ Surrender (Caught)</button>
         <button id="hostEndBtn" class="danger" onclick="endGame('🛑 Match terminated by Commander.')" style="display:none;">🛑 End Hunt</button>
+        
+        <!-- [FEATURE] QR TAGGING BUTTONS -->
+        <button id="showQrBtn" class="secondary" onclick="generateMyQR()" style="display:none;">📱 Show ID Tag</button>
+        <button id="scanQrBtn" class="danger" onclick="startScanner()" style="display:none;">📷 Scan Target</button>
       </div>
 
       <!-- Quick Tactical Pings -->
@@ -895,6 +903,16 @@
     </div>
   </div>
 
+  <!-- [FEATURE] QR Modals Overlay -->
+  <div id="qrModal" class="screen" style="z-index: 2000; background: var(--bg); display: none; align-items: center; justify-content: center; position: fixed; inset: 0;">
+    <div class="card" style="text-align: center; max-width: 300px; width: 100%;">
+      <h3 id="qrModalTitle" style="color: var(--primary);">Tag Target</h3>
+      <div id="qrCodeContainer" style="display: none; background: #fff; padding: 15px; border-radius: 10px; margin: 15px auto; width: max-content;"></div>
+      <div id="qrReader" style="display: none; width: 100%; border-radius: 10px; overflow: hidden; margin: 15px 0;"></div>
+      <button class="secondary" onclick="closeQRModal()">Close</button>
+    </div>
+  </div>
+
   <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
@@ -926,8 +944,6 @@
     // =========================================================
     // --- 1B. PAYLOAD MINIFICATION SERIALIZER ---
     // =========================================================
-    // Quantizes GPS floats & velocity vectors into a single compact array under key `t`
-    // Format: [latInt, lngInt, vLatInt, vLngInt, accInt, headingInt, oobBit, shortTimestamp]
     const COORD_SCALE = 1e5; // ~1.1m precision
     const VEL_SCALE = 1e6;   // Velocity in deg/sec scaled to integer
     const EPOCH_MOD = 100000000;
@@ -946,8 +962,6 @@
         ]);
       },
 
-      // Unpacks minified `p.t` back into standard properties on `p`
-      // Preserves live `p.heading` updates sent between interval GPS broadcasts
       hydratePlayer(p) {
         if (!p) return p;
         if (typeof p.t === 'string') {
@@ -962,7 +976,6 @@
             p.vLat = vLatI / VEL_SCALE;
             p.vLng = vLngI / VEL_SCALE;
             p.accuracy = acc;
-            // Use live standalone `p.heading` if present; otherwise fall back to packet's `hdg`
             p.heading = (typeof p.heading === 'number') ? p.heading : hdg;
             p.outOfBounds = oob === 1;
             p.lastUpdated = fullTs;
@@ -1000,7 +1013,6 @@
       { emoji: "👑", name: "Titan" }
     ];
 
-    // Standard OpenStreetMap Tiles (Styled Dark via CSS .leaflet-tile-pane)
     const DARK_TILES = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
     const TILE_ATTRIB = '&copy; OpenStreetMap contributors';
 
@@ -1019,13 +1031,17 @@
     let lastGpsFixTime = 0;
     let myAccuracy = 999;
 
+    // [FEATURE] QR State & Instant Fallback Config
+    let html5QrcodeScanner = null;
+    let gpsConfig = { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 };
+
     // Compass & Calibration State
     let rawSensorHeading = 0;
-    let compassOffset = Number(localStorage.getItem('manhunt_compass_offset') || 23); // Default +23° corrects typical 337° left skew
+    let compassOffset = Number(localStorage.getItem('manhunt_compass_offset') || 23);
     let myHeading = 0;
     let smoothedHeadingSin = 0;
     let smoothedHeadingCos = 1;
-    let unwrappedHeadings = {}; // Prevents 359° -> 1° full backwards spin in CSS
+    let unwrappedHeadings = {};
     let lastSyncedHeading = 0;
     let lastHeadingSyncTime = 0;
     let lastMinifiedRatioText = "";
@@ -1153,7 +1169,7 @@
     }
 
     // =========================================================
-    // --- 4. WAKE LOCK & REAL-TIME COMPASS ENGINE (FIXED) ---
+    // --- 4. WAKE LOCK & REAL-TIME COMPASS ENGINE ---
     // =========================================================
     async function keepScreenAwake() {
       try {
@@ -1173,7 +1189,6 @@
     let compassAttached = false;
     let usingAbsoluteOrientation = false;
 
-    // Interactive North Calibration & iOS Permission Trigger
     window.calibrateCompassNorth = async () => {
       if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
         try {
@@ -1185,7 +1200,6 @@
         } catch (e) {}
       }
 
-      // Calculate exact offset so current facing direction becomes 0° North
       compassOffset = (360 - rawSensorHeading) % 360;
       localStorage.setItem('manhunt_compass_offset', String(Math.round(compassOffset)));
       myHeading = 0;
@@ -1219,7 +1233,6 @@
       }
     }
 
-    // Shortest-path angle unwrapping so 359° -> 1° rotates +2° instead of -358°
     function getShortestRotation(name, targetDeg) {
       const prev = unwrappedHeadings[name] ?? targetDeg;
       let delta = ((targetDeg - prev + 540) % 360) - 180;
@@ -1229,15 +1242,12 @@
     }
 
     function handleOrientation(e) {
-      // Ignore non-absolute events if absolute orientation is active
       if (usingAbsoluteOrientation && e.type === 'deviceorientation' && !e.absolute) return;
 
       let sensorDeg = null;
       if (typeof e.webkitCompassHeading === 'number') {
-        // iOS degrees clockwise from magnetic North
         sensorDeg = e.webkitCompassHeading;
       } else if (e.alpha !== null) {
-        // Android degrees counter-clockwise -> convert to clockwise + screen orientation
         const screenAngle = (window.screen?.orientation?.angle || window.orientation || 0);
         sensorDeg = (360 - e.alpha + screenAngle) % 360;
       }
@@ -1246,7 +1256,6 @@
         rawSensorHeading = (sensorDeg + 360) % 360;
         const correctedDeg = (rawSensorHeading + compassOffset + 360) % 360;
 
-        // Low-pass circular filter (sin/cos) to eliminate magnetometer jitter
         const rad = correctedDeg * (Math.PI / 180);
         smoothedHeadingSin = smoothedHeadingSin * 0.75 + Math.sin(rad) * 0.25;
         smoothedHeadingCos = smoothedHeadingCos * 0.75 + Math.cos(rad) * 0.25;
@@ -1255,13 +1264,11 @@
         myHeading = Math.round(filteredDeg) % 360;
         updateTelemetryPill();
 
-        // Rotate local player's cone smoothly at 60fps
         const myCone = document.getElementById(`cone-${myName}`);
         if (myCone) {
           myCone.style.transform = `rotate(${getShortestRotation(myName, myHeading)}deg)`;
         }
 
-        // Sync standalone `heading` to Firebase whenever rotated >= 10 degrees (even in Interval Mode)
         const now = Date.now();
         const angleDiff = Math.abs(((myHeading - lastSyncedHeading + 540) % 360) - 180);
         if (gameActive && myRoom && myName && angleDiff >= 10 && (now - lastHeadingSyncTime > 1400)) {
@@ -1282,7 +1289,7 @@
     }
 
     // =========================================================
-    // --- 5. AVATAR SELECTOR & AUTO-REJOIN ---
+    // --- 5. AVATAR SELECTOR & NAVIGATION HELPER ---
     // =========================================================
     function renderAvatarGrids() {
       ['hostAvatarGrid', 'joinAvatarGrid'].forEach(gridId => {
@@ -1302,6 +1309,16 @@
           container.appendChild(btn);
         });
       });
+    }
+
+    // [FEATURE] Auto-Generated Room Codes 
+    function generateTacticalCode() {
+      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // No tricky chars
+      let code = '';
+      for (let i = 0; i < 4; i++) {
+        code += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      return code;
     }
 
     window.addEventListener('DOMContentLoaded', async () => {
@@ -1344,11 +1361,14 @@
       }
     });
 
-    // --- NAVIGATION HELPERS ---
     window.showHostForm = () => {
       document.getElementById('home-choices').style.display = 'none';
       document.getElementById('join-form').style.display = 'none';
       document.getElementById('host-form').style.display = 'block';
+      
+      // Auto-fill tactical room code
+      document.getElementById('hostRoomCode').value = generateTacticalCode();
+      
       setTimeout(initSetupMap, 200);
     };
 
@@ -1388,7 +1408,7 @@
     };
 
     // =========================================================
-    // --- 6. HOST GEOFENCE SETUP MAP (WITH HIGH-ACCURACY LOCK) ---
+    // --- 6. HOST GEOFENCE SETUP MAP ---
     // =========================================================
     function initSetupMap() {
       if (setupMap) {
@@ -1470,7 +1490,7 @@
     };
 
     // =========================================================
-    // --- 7. ROOM CREATION, JOINING & DEV PIN PROTECTION ---
+    // --- 7. ROOM CREATION, JOINING ---
     // =========================================================
     window.submitCreate = async () => {
       const errEl = document.getElementById('hostError');
@@ -1494,14 +1514,17 @@
         return;
       }
 
+      // [FEATURE] Developer Re-entry Fix
       let tryingDev = (myName.toLowerCase() === DEV_NAME.toLowerCase());
       if (tryingDev) {
-        const pin = prompt("⚡ Developer Identity Detected. Enter Master PIN:");
-        if (pin !== DEV_PIN) {
-          errEl.innerText = "Invalid Developer PIN. Access denied.";
-          return;
+        if (sessionStorage.getItem('manhunt_dev_auth') !== 'true') {
+          const pin = prompt("⚡ Developer Identity Detected. Enter Master PIN:");
+          if (pin !== DEV_PIN) {
+            errEl.innerText = "Invalid Developer PIN. Access denied.";
+            return;
+          }
+          sessionStorage.setItem('manhunt_dev_auth', 'true');
         }
-        sessionStorage.setItem('manhunt_dev_auth', 'true');
       }
       isDev = tryingDev;
       isHost = true;
@@ -1591,14 +1614,17 @@
         }
       }
 
+      // [FEATURE] Developer Re-entry Fix
       let tryingDev = (myName.toLowerCase() === DEV_NAME.toLowerCase());
       if (tryingDev) {
-        const pin = prompt("⚡ Developer Identity Detected. Enter Master PIN:");
-        if (pin !== DEV_PIN) {
-          errEl.innerText = "Invalid Developer PIN. Access denied.";
-          return;
+        if (sessionStorage.getItem('manhunt_dev_auth') !== 'true') {
+          const pin = prompt("⚡ Developer Identity Detected. Enter Master PIN:");
+          if (pin !== DEV_PIN) {
+            errEl.innerText = "Invalid Developer PIN. Access denied.";
+            return;
+          }
+          sessionStorage.setItem('manhunt_dev_auth', 'true');
         }
-        sessionStorage.setItem('manhunt_dev_auth', 'true');
       }
       isDev = tryingDev;
       isHost = (val.host === myName);
@@ -1631,7 +1657,7 @@
     };
 
     // =========================================================
-    // --- 8. LOBBY ENGINE & ATOMIC AUTO-BALANCER ---
+    // --- 8. LOBBY ENGINE & AUTO-BALANCER ---
     // =========================================================
     function enterLobby() {
       switchScreen('screen-lobby');
@@ -1774,7 +1800,7 @@
     };
 
     // =========================================================
-    // --- 9. CORE GAME ENGINE & 60 FPS DEAD RECKONING ---
+    // --- 9. CORE GAME ENGINE & INITIALIZATION ---
     // =========================================================
     async function initGame() {
       if (gameActive) return;
@@ -1804,7 +1830,10 @@
       document.getElementById('caughtBtn').style.display = (myRole === 'Hider' && myStatus !== 'Caught') ? 'block' : 'none';
       document.getElementById('hostEndBtn').style.display = (isHost || isDev) ? 'block' : 'none';
 
-      // Developers ALWAYS get the Sonar Sweep button regardless of role/mode
+      // [FEATURE] Display QR tagging buttons appropriately 
+      document.getElementById('showQrBtn').style.display = (myRole === 'Hider' && myStatus !== 'Caught') ? 'block' : 'none';
+      document.getElementById('scanQrBtn').style.display = (myRole === 'Catcher' || isDev) ? 'block' : 'none';
+
       const canUseRadar = isDev || (radarMode === 'all') || (radarMode === 'catchers' && myRole === 'Catcher');
       const radarBtn = document.getElementById('radarBtn');
       radarBtn.style.display = canUseRadar ? 'block' : 'none';
@@ -1839,7 +1868,7 @@
       countdownTimer = setInterval(updateHUD, 1000);
       startDeadReckoningLoop();
 
-      // Real-time Operative Telemetry Listener (Hydrates Minified Payloads)
+      // Real-time Operative Telemetry Listener
       onValue(ref(db, `rooms/${myRoom}/players`), (pSnap) => {
         const players = pSnap.val() || {};
         for (const p of Object.values(players)) {
@@ -1848,7 +1877,10 @@
         if (players[myName]) {
           myStatus = players[myName].status;
           myRole = players[myName].role;
+          
+          // Re-evaluate button states if caught
           document.getElementById('caughtBtn').style.display = (myRole === 'Hider' && myStatus !== 'Caught') ? 'block' : 'none';
+          document.getElementById('showQrBtn').style.display = (myRole === 'Hider' && myStatus !== 'Caught') ? 'block' : 'none';
         }
         renderPlayersAndAlerts(players);
         checkWin(players);
@@ -1952,19 +1984,77 @@
             accuracyRings[name].setLatLng([ent.lat, ent.lng]);
           }
         }
-
         drAnimationFrame = requestAnimationFrame(step);
       }
-
       drAnimationFrame = requestAnimationFrame(step);
     }
 
     // =========================================================
-    // --- 10. CONTINUOUS HIGH-PRECISION GPS & GEOFENCE ---
+    // --- 10. CONTINUOUS GPS, FALLBACK & GEOFENCE ---
     // =========================================================
+
+    // [FEATURE] Instant GPS Fallback Logic
     function handleGpsError(err) {
-      if (err.code === 1) {
+      if (err.code === 1) { // PERMISSION_DENIED
         document.getElementById('gpsErrorBanner').style.display = 'block';
+      } else if (err.code === 3) { // TIMEOUT
+        console.warn("High precision GPS timed out. Falling back to standard precision mode.");
+        gpsConfig.enableHighAccuracy = false; // Turn off high-accuracy for faster fix
+        if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+        watchId = navigator.geolocation.watchPosition(processGpsUpdate, handleGpsError, gpsConfig);
+      }
+    }
+
+    function processGpsUpdate(pos) {
+      document.getElementById('gpsErrorBanner').style.display = 'none';
+      const newAcc = pos.coords.accuracy || 999;
+
+      if (myLat !== null && newAcc > 120 && myAccuracy < 35) {
+        return; // Ignore wild jumping points if we had a solid lock
+      }
+
+      const now = Date.now();
+      const newLat = pos.coords.latitude;
+      const newLng = pos.coords.longitude;
+
+      if (myLat !== null && myLng !== null && lastGpsFixTime > 0) {
+        const dtSec = (now - lastGpsFixTime) / 1000;
+        if (dtSec >= 0.25 && dtSec < 15) {
+          const maxDegPerSec = 0.0001;
+          const rawVLat = (newLat - myLat) / dtSec;
+          const rawVLng = (newLng - myLng) / dtSec;
+          myVLat = Math.max(-maxDegPerSec, Math.min(maxDegPerSec, rawVLat));
+          myVLng = Math.max(-maxDegPerSec, Math.min(maxDegPerSec, rawVLng));
+        }
+      }
+
+      myLat = newLat;
+      myLng = newLng;
+      myAccuracy = newAcc;
+      lastGpsFixTime = now;
+
+      if (!compassAttached && pos.coords.speed && pos.coords.speed > 1.5 && pos.coords.heading !== null && !isNaN(pos.coords.heading)) {
+        myHeading = Math.round(pos.coords.heading);
+      }
+
+      updateTelemetryPill();
+
+      const isOutOfBounds = checkMyOutOfBounds();
+      document.getElementById('outOfBoundsBanner').style.display = isOutOfBounds ? 'block' : 'none';
+
+      const significantAccuracyUpgrade = (myAccuracy < lastBroadcastAccuracy * 0.6) && (lastBroadcastAccuracy > 25);
+
+      if (updateIntervalMs === 0 || isOutOfBounds) {
+        if (now - lastBroadcastTime > 1200 || significantAccuracyUpgrade) {
+          broadcastPositionToFirebase(false);
+        }
+      } else {
+        if (now >= nextPingTime || significantAccuracyUpgrade) {
+          broadcastPositionToFirebase(false);
+          if (now >= nextPingTime) {
+            nextPingTime = now + updateIntervalMs;
+          }
+        }
       }
     }
 
@@ -1973,65 +2063,10 @@
       if (updateIntervalMs === 0) {
         document.getElementById('nextUpdate').textContent = "📡 LIVE";
       }
-
-      watchId = navigator.geolocation.watchPosition(
-        (pos) => {
-          document.getElementById('gpsErrorBanner').style.display = 'none';
-          const newAcc = pos.coords.accuracy || 999;
-
-          if (myLat !== null && newAcc > 120 && myAccuracy < 35) {
-            return;
-          }
-
-          const now = Date.now();
-          const newLat = pos.coords.latitude;
-          const newLng = pos.coords.longitude;
-
-          // Compute velocity vector (degrees/sec) for Dead Reckoning, clamped to ~10 m/s sprint
-          if (myLat !== null && myLng !== null && lastGpsFixTime > 0) {
-            const dtSec = (now - lastGpsFixTime) / 1000;
-            if (dtSec >= 0.25 && dtSec < 15) {
-              const maxDegPerSec = 0.0001;
-              const rawVLat = (newLat - myLat) / dtSec;
-              const rawVLng = (newLng - myLng) / dtSec;
-              myVLat = Math.max(-maxDegPerSec, Math.min(maxDegPerSec, rawVLat));
-              myVLng = Math.max(-maxDegPerSec, Math.min(maxDegPerSec, rawVLng));
-            }
-          }
-
-          myLat = newLat;
-          myLng = newLng;
-          myAccuracy = newAcc;
-          lastGpsFixTime = now;
-
-          // Only use GPS course heading if compass hasn't attached and player is running fast
-          if (!compassAttached && pos.coords.speed && pos.coords.speed > 1.5 && pos.coords.heading !== null && !isNaN(pos.coords.heading)) {
-            myHeading = Math.round(pos.coords.heading);
-          }
-
-          updateTelemetryPill();
-
-          const isOutOfBounds = checkMyOutOfBounds();
-          document.getElementById('outOfBoundsBanner').style.display = isOutOfBounds ? 'block' : 'none';
-
-          const significantAccuracyUpgrade = (myAccuracy < lastBroadcastAccuracy * 0.6) && (lastBroadcastAccuracy > 25);
-
-          if (updateIntervalMs === 0 || isOutOfBounds) {
-            if (now - lastBroadcastTime > 1200 || significantAccuracyUpgrade) {
-              broadcastPositionToFirebase(false);
-            }
-          } else {
-            if (now >= nextPingTime || significantAccuracyUpgrade) {
-              broadcastPositionToFirebase(false);
-              if (now >= nextPingTime) {
-                nextPingTime = now + updateIntervalMs;
-              }
-            }
-          }
-        },
-        handleGpsError,
-        HIGH_PRECISION_GPS
-      );
+      
+      // Ensure we start by trying high precision every time we boot the game
+      gpsConfig.enableHighAccuracy = true; 
+      watchId = navigator.geolocation.watchPosition(processGpsUpdate, handleGpsError, gpsConfig);
     }
 
     function checkMyOutOfBounds() {
@@ -2069,7 +2104,6 @@
       lastMinifiedRatioText = `-${savedPct}%`;
       updateTelemetryPill();
 
-      // Clear standalone `heading` when broadcasting a full packet so `t` stays authoritative until next turn
       update(ref(db, `rooms/${myRoom}/players/${myName}`), {
         t: minifiedPayload,
         heading: null
@@ -2099,7 +2133,6 @@
           if (d < closestEnemyDist) closestEnemyDist = d;
         }
 
-        // Head-Start Stealth Rule
         if (myRole === 'Catcher' && !isDev && p.role === 'Hider' && inHeadStart && !p.outOfBounds) {
           if (markers[name]) { map.removeLayer(markers[name]); delete markers[name]; }
           if (deadReckoningEntities[name]) { delete deadReckoningEntities[name]; }
@@ -2122,7 +2155,6 @@
         const unwrappedDeg = getShortestRotation(name, targetHeading);
         const coneClass = p.role === 'Catcher' ? 'cone-catcher' : '';
 
-        // Feed packet state into the 60 FPS Dead Reckoning engine
         updateDeadReckoningTarget(name, p);
 
         if (!markers[name]) {
@@ -2135,7 +2167,6 @@
           const icon = L.divIcon({ html: iconHtml, className: '', iconSize: [38, 38], iconAnchor: [19, 19] });
           markers[name] = L.marker([p.lat, p.lng], { icon }).addTo(map);
         } else {
-          // Update existing DOM nodes directly so CSS transitions stay silky-smooth
           const coneEl = document.getElementById(`cone-${name}`);
           if (coneEl) {
             coneEl.className = `heading-cone ${coneClass}`;
@@ -2148,7 +2179,6 @@
           }
         }
 
-        // Subtle GPS Accuracy Ring for local player (or Dev)
         if ((name === myName || isDev) && p.accuracy && p.accuracy > 5) {
           if (!accuracyRings[name]) {
             accuracyRings[name] = L.circle([p.lat, p.lng], {
@@ -2159,7 +2189,6 @@
           }
         }
 
-        // "Last Seen" Expanding Ghost Ring for Interval Mode Hiders
         if (p.role === 'Hider' && p.status !== 'Caught' && updateIntervalMs > 0 && !p.outOfBounds && p.lastUpdated) {
           const elapsedSec = Math.max(0, (now - p.lastUpdated) / 1000);
           const ghostRadius = Math.min(180, Math.round(elapsedSec * 1.4));
@@ -2178,7 +2207,6 @@
           delete ghostRings[name];
         }
 
-        // Interactive Popup
         const popupContainer = document.createElement('div');
         const titleB = document.createElement('b');
         titleB.textContent = `${charEmoji} ${name} (${p.role})`;
@@ -2210,7 +2238,6 @@
         markers[name].bindPopup(popupContainer);
       }
 
-      // Dynamic Proximity Vignette + Escalating Heartbeat Audio & Haptics
       const proxBanner = document.getElementById('proximityBanner');
       const vignette = document.getElementById('proximityVignette');
 
@@ -2303,13 +2330,12 @@
     }
 
     // =========================================================
-    // --- 13. SONAR RADAR (CONFIGURABLE CD + DEV BYPASS) ---
+    // --- 13. SONAR RADAR & LOGIC ---
     // =========================================================
     window.triggerRadarScan = () => {
       update(ref(db, `rooms/${myRoom}`), { radarSweep: Date.now() });
       sendQuickPing("📡 SONAR SWEEP ACTIVATED! Pinging all Hiders!");
 
-      // Developers (`Vivek` + PIN `7777`) bypass the cooldown completely
       if (isDev) return;
 
       const btn = document.getElementById('radarBtn');
@@ -2335,6 +2361,7 @@
       myVLng = 0;
       update(ref(db, `rooms/${myRoom}/players/${myName}`), { status: 'Caught', outOfBounds: false });
       document.getElementById('caughtBtn').style.display = 'none';
+      document.getElementById('showQrBtn').style.display = 'none'; // hide QR button
       sendQuickPing("🏳️ Operative captured!");
     };
 
@@ -2408,6 +2435,7 @@
       gameActive = false;
       if (drAnimationFrame) cancelAnimationFrame(drAnimationFrame);
       document.getElementById('proximityVignette').classList.remove('vignette-active');
+      window.closeQRModal(); // ensure scanner isn't left running
 
       if (wakeLock) {
         wakeLock.release().catch(() => {});
@@ -2428,6 +2456,70 @@
     window.clearAndRestart = () => {
       localStorage.removeItem('manhunt_room');
       location.reload();
+    };
+    
+    // =========================================================
+    // --- 14. [FEATURE] QR CODE GENERATOR & SCANNER ---
+    // =========================================================
+    window.generateMyQR = () => {
+      const qrData = `MANHUNT_TAG:${myRoom}:${myName}`;
+      const container = document.getElementById("qrCodeContainer");
+      container.innerHTML = ""; 
+      
+      new QRCode(container, {
+        text: qrData,
+        width: 200,
+        height: 200,
+        colorDark: "#000000",
+        colorLight: "#ffffff",
+        correctLevel: QRCode.CorrectLevel.H
+      });
+
+      document.getElementById("qrModalTitle").textContent = "Your ID Tag";
+      document.getElementById("qrReader").style.display = "none";
+      container.style.display = "block";
+      document.getElementById("qrModal").style.display = "flex";
+    };
+
+    window.startScanner = () => {
+      document.getElementById("qrModalTitle").textContent = "Scan Target";
+      document.getElementById("qrCodeContainer").style.display = "none";
+      document.getElementById("qrReader").style.display = "block";
+      document.getElementById("qrModal").style.display = "flex";
+
+      if (!html5QrcodeScanner) {
+        html5QrcodeScanner = new Html5Qrcode("qrReader");
+      }
+
+      html5QrcodeScanner.start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: { width: 200, height: 200 } },
+        (decodedText) => {
+          if (decodedText.startsWith(`MANHUNT_TAG:${myRoom}:`)) {
+            const targetName = decodedText.split(':')[2];
+            
+            // Stop scanner, catch target, play sound
+            html5QrcodeScanner.stop();
+            window.catchHider(targetName);
+            playSonarPing(); 
+            
+            document.getElementById("qrModalTitle").textContent = `🎯 Target ${targetName} Captured!`;
+            document.getElementById("qrReader").style.display = "none";
+            
+            setTimeout(window.closeQRModal, 2000);
+          }
+        },
+        (errorMessage) => { /* ignore frame errors */ }
+      ).catch(err => {
+        alert("Camera access denied or unavailable.");
+      });
+    };
+
+    window.closeQRModal = () => {
+      document.getElementById("qrModal").style.display = "none";
+      if (html5QrcodeScanner && html5QrcodeScanner.isScanning) {
+        html5QrcodeScanner.stop().catch(e => console.log(e));
+      }
     };
 
     // --- GEOMETRY & HAVERSINE UTILITIES ---
