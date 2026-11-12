@@ -237,6 +237,12 @@
       color: #fff;
       box-shadow: 0 4px 15px rgba(255, 42, 95, 0.3);
     }
+    button.primary-outline {
+      background: rgba(163, 255, 0, 0.1);
+      color: var(--primary);
+      border: 1px solid var(--primary);
+      box-shadow: 0 0 10px var(--primary-glow);
+    }
 
     /* GLASSMORPHISM CARDS */
     .card {
@@ -764,7 +770,7 @@
       Full satellite override active. Head-start blindness bypassed.
     </p>
 
-    <!-- Global Room Selector (Works even from Home Screen) -->
+    <!-- Global Room Selector -->
     <div style="margin-bottom: 10px;">
       <label style="margin-top:0;">Inspect Active Server Room</label>
       <div style="display:flex; gap:6px;">
@@ -774,6 +780,8 @@
     </div>
 
     <!-- Match Override Controls -->
+    <button class="primary-outline" style="margin:0 0 6px 0; padding:8px; font-size:11px;" onclick="godForceExactLock()">🛰️ FORCE GLOBAL EXACT GPS LOCK</button>
+    
     <div class="grid-2" style="margin-bottom: 10px;">
       <button class="secondary" style="margin:0; padding:7px; font-size:11px;" onclick="godForceRadar()">📡 Force Radar Ping</button>
       <button class="secondary" style="margin:0; padding:7px; font-size:11px;" onclick="godAddTime(5)">⏱️ +5 Mins Clock</button>
@@ -1268,7 +1276,7 @@
     let countdownTimer = null;
 
     // Match Rules, Game Modes & Timers
-    let gameMode = "classic"; // classic | infection | shrinking | infection_shrinking
+    let gameMode = "classic"; 
     let updateIntervalMs = 180000;
     let radarCooldownMs = 60000;
     let nextPingTime = 0;
@@ -1282,8 +1290,11 @@
     let boundaryData = null;
     let currentDynamicRadius = 250;
     let extractionData = null;
+    
+    // Exact Lock and Event Timers
     let extractionHoldSeconds = 0;
     let lastRadarHandled = 0;
+    let lastExactLockHandled = 0; // Ensures exact locks only trigger once per command
     let gameActive = false;
 
     // Dual Chat State
@@ -1444,6 +1455,14 @@
         container.appendChild(card);
       }
     }
+
+    // Force Global Exact Hardware Lock Command
+    window.godForceExactLock = () => {
+      const rTarget = myRoom || inspectedRoom;
+      if (!rTarget) return;
+      update(ref(db, `rooms/${rTarget}`), { forceExactLock: Date.now() });
+      alert("Command sent: All operatives' hardware modules are waking up to fetch precise satellite locks now.");
+    };
 
     window.godForceRadar = () => {
       const rTarget = myRoom || inspectedRoom;
@@ -1650,6 +1669,10 @@
       if (!pill) return;
       const accText = myAccuracy < 900 ? `±${Math.round(myAccuracy)}m` : 'Locking...';
       const minBadge = lastMinifiedRatioText ? ` | 📦 ${lastMinifiedRatioText}` : '';
+      
+      // Do not overwrite "FORCING EXACT LOCK" message during override
+      if (pill.textContent.includes('FORCING')) return;
+      
       pill.textContent = `🛰️ ${accText} | 🧭 ${myHeading}°${minBadge}`;
       pill.style.color = myAccuracy <= 20 ? 'var(--primary)' : (myAccuracy <= 50 ? 'var(--warning)' : 'var(--catcher)');
     }
@@ -1959,7 +1982,8 @@
         headStartMs: parseInt(document.getElementById('headStartSelect').value),
         radarMode: document.getElementById('radarPermissionSelect').value,
         boundary: finalBoundary,
-        extraction: { lat: extractionCenter.lat, lng: extractionCenter.lng, radius: 35 }
+        extraction: { lat: extractionCenter.lat, lng: extractionCenter.lng, radius: 35 },
+        forceExactLock: 0
       };
 
       await set(ref(db, `rooms/${myRoom}`), roomData);
@@ -2193,7 +2217,8 @@
         startTime: now,
         endTime: now + (val.durationMins * 60000),
         headStartEndTime: now + (val.headStartMs || 0),
-        radarSweep: 0
+        radarSweep: 0,
+        forceExactLock: 0
       });
     };
 
@@ -2292,6 +2317,34 @@
         }
         renderPlayersAndAlerts(players);
         checkWin(players);
+      });
+
+      // Exact Hardware GPS Lock Listener (Triggered globally by Dev God Mode)
+      onValue(ref(db, `rooms/${myRoom}/forceExactLock`), (lSnap) => {
+        const lockTime = lSnap.val() || 0;
+        if (lockTime > lastExactLockHandled && (Date.now() - lockTime < 15000)) {
+          lastExactLockHandled = lockTime;
+          
+          if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+          document.getElementById('gpsAccuracyPill').textContent = '🛰️ HARDWARE LOCKING...';
+
+          navigator.geolocation.getCurrentPosition(
+            (pos) => {
+              myLat = pos.coords.latitude;
+              myLng = pos.coords.longitude;
+              myAccuracy = pos.coords.accuracy || 999;
+              lastGpsFixTime = Date.now();
+              document.getElementById('gpsAccuracyPill').textContent = '🛰️ EXACT LOCK OBTAINED';
+              setTimeout(updateTelemetryPill, 2000);
+              broadcastPositionToFirebase(true); // Push to map immediately
+            },
+            () => {
+              document.getElementById('gpsAccuracyPill').textContent = '⚠️ EXACT LOCK FAILED';
+              setTimeout(updateTelemetryPill, 3000);
+            },
+            { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 } // Bypasses caches completely
+          );
+        }
       });
 
       // Sonar Radar Sweep Listener
@@ -2489,7 +2542,6 @@
     }
 
     function checkMyOutOfBounds() {
-      // Ignore false OOB alerts while phone is still on coarse cell-tower lock (> 65m accuracy)
       if (!boundaryData || myRole !== 'Hider' || myStatus === 'Caught' || myLat === null || myAccuracy > 65) return false;
       if (boundaryData.type === 'circle') {
         const dist = calcMeters(myLat, myLng, boundaryData.lat, boundaryData.lng);
@@ -2805,7 +2857,6 @@
       }, 1000);
     };
 
-    // Handles both Classic Catch and Infection Conversion
     function applyCaptureToPlayer(targetName) {
       const isInfection = (gameMode === 'infection' || gameMode === 'infection_shrinking');
       if (isInfection) {
